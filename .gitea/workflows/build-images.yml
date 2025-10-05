@@ -1,0 +1,84 @@
+name: Build Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: git.automatizase.com.br
+  REGISTRY_PATH: luis.erlacher/archon
+
+jobs:
+  build-server:
+    runs-on: wsl
+    steps:
+      - name: Build archon-server
+        run: |
+          cd python
+          docker build -f Dockerfile.server \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:build-${{ github.run_number }} \
+            .
+          echo "✅ Server image built successfully"
+
+      - name: Push server image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:build-${{ github.run_number }}
+          echo "✅ Server image pushed to registry"
+
+  build-mcp:
+    runs-on: wsl
+    steps:
+      - name: Build archon-mcp
+        run: |
+          cd python
+          docker build -f Dockerfile.mcp \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:build-${{ github.run_number }} \
+            .
+          echo "✅ MCP image built successfully"
+
+      - name: Push mcp image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:build-${{ github.run_number }}
+          echo "✅ MCP image pushed to registry"
+
+  build-frontend:
+    runs-on: wsl
+    steps:
+      - name: Build archon-frontend
+        run: |
+          cd archon-ui-main
+          docker build -f Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:build-${{ github.run_number }} \
+            .
+          echo "✅ Frontend image built successfully"
+
+      - name: Push frontend image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:build-${{ github.run_number }}
+          echo "✅ Frontend image pushed to registry"
+
+  build-agents:
+    runs-on: wsl
+    steps:
+      - name: Build archon-agents
+        run: |
+          cd python
+          docker build -f Dockerfile.agents \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:build-${{ github.run_number }} \
+            .
+          echo "✅ Agents image built successfully"
+
+      - name: Push agents image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:build-${{ github.run_number }}
+          echo "✅ Agents image pushed to registry"
