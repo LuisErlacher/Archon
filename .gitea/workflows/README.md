@@ -14,7 +14,7 @@ Criei o serviço systemd conforme a documentação oficial do Gitea! Agora execu
 
   Depois disso, você poderá usar os comandos oficiais:
 
-  # Iniciar o runner
+  # Iniciar o runner *
   sudo systemctl start act_runner
 
   # Parar o runner  
