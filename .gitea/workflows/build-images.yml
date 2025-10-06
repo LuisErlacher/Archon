@@ -70,3 +70,5 @@ jobs:
           docker build -f Dockerfile.agents -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:${{ github.sha }}
+          
+          #
