@@ -22,8 +22,9 @@ jobs:
       - name: Build and push server
         run: |
           cd python
-          docker build -f Dockerfile.server -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest .
+          docker build -f Dockerfile.server -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:${{ github.sha }}
 
   build-mcp:
     runs-on: wsl
@@ -36,8 +37,9 @@ jobs:
       - name: Build and push mcp
         run: |
           cd python
-          docker build -f Dockerfile.mcp -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest .
+          docker build -f Dockerfile.mcp -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:${{ github.sha }}
 
   build-frontend:
     runs-on: wsl
@@ -47,11 +49,12 @@ jobs:
           git clone https://git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
-      - name: Build and push frontend
+      - name: Build and push frontend (PRODUCTION with Nginx)
         run: |
           cd archon-ui-main
-          docker build -f Dockerfile -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest .
+          docker build -f Dockerfile.production -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:${{ github.sha }}
 
   build-agents:
     runs-on: wsl
@@ -64,5 +67,6 @@ jobs:
       - name: Build and push agents
         run: |
           cd python
-          docker build -f Dockerfile.agents -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest .
+          docker build -f Dockerfile.agents -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:${{ github.sha }}

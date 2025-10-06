@@ -1,0 +1,478 @@
+# =============================================================================
+# NAMESPACE
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: archon
+
+---
+# =============================================================================
+# SECRETS - Encode seus valores com: echo -n "valor" | base64
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: archon-secrets
+  namespace: archon
+type: Opaque
+stringData:
+  # Use stringData para valores em texto plano (K8s converte automaticamente)
+  SUPABASE_URL: "https://seu-projeto.supabase.co"
+  SUPABASE_SERVICE_KEY: "sua-service-role-key-aqui"
+  OPENAI_API_KEY: "sua-openai-key-aqui"
+  LOGFIRE_TOKEN: ""  # Opcional
+
+---
+# =============================================================================
+# CONFIGMAP - Configurações não-sensíveis
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: archon-config
+  namespace: archon
+data:
+  # Service Discovery - Kubernetes mode
+  SERVICE_DISCOVERY_MODE: "kubernetes"
+  LOG_LEVEL: "INFO"
+
+  # Portas dos serviços
+  ARCHON_SERVER_PORT: "8181"
+  ARCHON_MCP_PORT: "8051"
+  ARCHON_UI_PORT: "3737"
+
+  # Host para comunicação interna
+  ARCHON_HOST: "localhost"
+
+  # MCP Configuration
+  TRANSPORT: "sse"
+  AGENTS_ENABLED: "false"
+
+---
+# =============================================================================
+# DEPLOYMENT - ARCHON SERVER (Backend Principal)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-server
+  namespace: archon
+  labels:
+    app: archon-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: archon-server
+  template:
+    metadata:
+      labels:
+        app: archon-server
+    spec:
+      containers:
+      - name: server
+        # IMPORTANTE: Substitua pelo seu registry
+        # Exemplos:
+        #   - Gitea: git.automatizase.com.br/luis.erlacher/archon/server:latest
+        #   - Docker Hub: docker.io/seu-usuario/archon-server:latest
+        image: git.automatizase.com.br/luis.erlacher/archon/server:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8181
+          name: http
+        env:
+        # Secrets
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: SUPABASE_URL
+        - name: SUPABASE_SERVICE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: SUPABASE_SERVICE_KEY
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: OPENAI_API_KEY
+        - name: LOGFIRE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: LOGFIRE_TOKEN
+
+        # ConfigMap
+        - name: SERVICE_DISCOVERY_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: SERVICE_DISCOVERY_MODE
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: LOG_LEVEL
+        - name: ARCHON_SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: ARCHON_SERVER_PORT
+        - name: ARCHON_MCP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: ARCHON_MCP_PORT
+        - name: ARCHON_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: ARCHON_HOST
+        - name: AGENTS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: AGENTS_ENABLED
+
+        # URLs dos serviços internos (DNS do Kubernetes)
+        - name: MCP_SERVICE_URL
+          value: "http://archon-mcp-service.archon.svc.cluster.local:8051"
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8181
+          initialDelaySeconds: 40
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8181
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+# =============================================================================
+# SERVICE - ARCHON SERVER
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: archon-server-service
+  namespace: archon
+  labels:
+    app: archon-server
+spec:
+  type: ClusterIP
+  selector:
+    app: archon-server
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8181
+    targetPort: 8181
+
+---
+# =============================================================================
+# DEPLOYMENT - ARCHON MCP (Model Context Protocol Server)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-mcp
+  namespace: archon
+  labels:
+    app: archon-mcp
+spec:
+  replicas: 1  # MCP geralmente só precisa de 1 réplica
+  selector:
+    matchLabels:
+      app: archon-mcp
+  template:
+    metadata:
+      labels:
+        app: archon-mcp
+    spec:
+      containers:
+      - name: mcp
+        # IMPORTANTE: Substitua pelo seu registry
+        # Exemplos:
+        #   - Gitea: git.automatizase.com.br/luis.erlacher/archon/mcp:latest
+        #   - Docker Hub: docker.io/seu-usuario/archon-mcp:latest
+        image: git.automatizase.com.br/luis.erlacher/archon/mcp:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8051
+          name: http
+        env:
+        # Secrets
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: SUPABASE_URL
+        - name: SUPABASE_SERVICE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: SUPABASE_SERVICE_KEY
+        - name: LOGFIRE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: archon-secrets
+              key: LOGFIRE_TOKEN
+
+        # ConfigMap
+        - name: SERVICE_DISCOVERY_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: SERVICE_DISCOVERY_MODE
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: LOG_LEVEL
+        - name: TRANSPORT
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: TRANSPORT
+        - name: ARCHON_MCP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: ARCHON_MCP_PORT
+        - name: ARCHON_SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: ARCHON_SERVER_PORT
+        - name: AGENTS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: AGENTS_ENABLED
+
+        # URL do API Server para comunicação reversa
+        - name: API_SERVICE_URL
+          value: "http://archon-server-service.archon.svc.cluster.local:8181"
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          tcpSocket:
+            port: 8051
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          tcpSocket:
+            port: 8051
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+---
+# =============================================================================
+# SERVICE - ARCHON MCP
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: archon-mcp-service
+  namespace: archon
+  labels:
+    app: archon-mcp
+spec:
+  type: ClusterIP
+  selector:
+    app: archon-mcp
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8051
+    targetPort: 8051
+
+---
+# =============================================================================
+# DEPLOYMENT - ARCHON FRONTEND (React UI)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-frontend
+  namespace: archon
+  labels:
+    app: archon-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: archon-frontend
+  template:
+    metadata:
+      labels:
+        app: archon-frontend
+    spec:
+      containers:
+      - name: frontend
+        # IMPORTANTE: Substitua pelo seu registry
+        # Exemplos:
+        #   - Gitea: git.automatizase.com.br/luis.erlacher/archon/frontend:latest
+        #   - Docker Hub: docker.io/seu-usuario/archon-frontend:latest
+        image: git.automatizase.com.br/luis.erlacher/archon/frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3737
+          name: http
+        env:
+        # Frontend precisa saber onde está o backend (via proxy reverso)
+        - name: VITE_ARCHON_SERVER_PORT
+          value: "8181"
+        - name: ARCHON_SERVER_PORT
+          value: "8181"
+        - name: HOST
+          value: "archon.automatizase.com.br"
+        - name: PROD
+          value: "true"
+        - name: DOCKER_ENV
+          value: "false"
+        - name: VITE_SHOW_DEVTOOLS
+          value: "false"
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3737
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3737
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+---
+# =============================================================================
+# SERVICE - ARCHON FRONTEND
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: archon-frontend-service
+  namespace: archon
+  labels:
+    app: archon-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: archon-frontend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 3737
+    targetPort: 3737
+
+---
+# =============================================================================
+# INGRESS - Nginx Ingress com todos os serviços no mesmo domínio
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: archon-ingress
+  namespace: archon
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
+    # WebSocket support para Socket.IO
+    nginx.ingress.kubernetes.io/websocket-services: "archon-server-service"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+spec:
+  tls:
+  - hosts:
+    - archon.automatizase.com.br
+    secretName: archon-tls-cert
+  rules:
+  - host: archon.automatizase.com.br
+    http:
+      paths:
+      # API Backend (todas as rotas /api/*)
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: archon-server-service
+            port:
+              number: 8181
+
+      # Health check
+      - path: /health
+        pathType: Prefix
+        backend:
+          service:
+            name: archon-server-service
+            port:
+              number: 8181
+
+      # Socket.IO
+      - path: /socket.io
+        pathType: Prefix
+        backend:
+          service:
+            name: archon-server-service
+            port:
+              number: 8181
+
+      # Frontend (tudo o resto)
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: archon-frontend-service
+            port:
+              number: 3737

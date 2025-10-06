@@ -2,14 +2,13 @@
 MCP API endpoints for Archon
 
 Provides status and configuration endpoints for the MCP service.
-The MCP container is managed by docker-compose, not by this API.
+Supports both Docker Compose and Kubernetes deployment modes.
 """
 
 import os
 from typing import Any
 
-import docker
-from docker.errors import NotFound
+import httpx
 from fastapi import APIRouter, HTTPException
 
 # Import unified logging
@@ -19,9 +18,75 @@ router = APIRouter(prefix="/api/mcp", tags=["mcp"])
 
 
 def get_container_status() -> dict[str, Any]:
-    """Get simple MCP container status without Docker management."""
+    """Get MCP container status - supports both Docker Compose and Kubernetes."""
+
+    # Detect environment via SERVICE_DISCOVERY_MODE
+    service_discovery = os.getenv("SERVICE_DISCOVERY_MODE", "docker_compose")
+
+    if service_discovery == "kubernetes":
+        return get_k8s_mcp_status()
+    else:
+        return get_docker_mcp_status()
+
+
+def get_k8s_mcp_status() -> dict[str, Any]:
+    """Get MCP status via HTTP health check (for Kubernetes)."""
+    try:
+        # Get MCP service URL from environment
+        mcp_url = os.getenv("MCP_SERVICE_URL", "http://archon-mcp-service.archon.svc.cluster.local:8051")
+
+        # Try to connect to MCP via HTTP health check
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(f"{mcp_url}/health")
+
+            if response.status_code == 200:
+                api_logger.debug(f"MCP health check successful (Kubernetes mode)")
+                return {
+                    "status": "running",
+                    "uptime": None,  # K8s doesn't expose container uptime easily
+                    "logs": [],
+                    "container_status": "running",
+                    "mode": "kubernetes"
+                }
+            else:
+                api_logger.warning(f"MCP health check returned {response.status_code}")
+                return {
+                    "status": "unhealthy",
+                    "uptime": None,
+                    "logs": [],
+                    "container_status": f"http_{response.status_code}",
+                    "mode": "kubernetes"
+                }
+
+    except httpx.ConnectError:
+        api_logger.error("MCP service not reachable (Kubernetes mode)")
+        return {
+            "status": "not_found",
+            "uptime": None,
+            "logs": [],
+            "container_status": "not_reachable",
+            "message": "MCP service not reachable. Check if archon-mcp pod is running.",
+            "mode": "kubernetes"
+        }
+    except Exception as e:
+        api_logger.error(f"Failed to check MCP status (Kubernetes) - error={str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "uptime": None,
+            "logs": [],
+            "container_status": "error",
+            "error": str(e),
+            "mode": "kubernetes"
+        }
+
+
+def get_docker_mcp_status() -> dict[str, Any]:
+    """Get MCP status via Docker API (for Docker Compose)."""
     docker_client = None
     try:
+        import docker
+        from docker.errors import NotFound
+
         docker_client = docker.from_env()
         container = docker_client.containers.get("archon-mcp")
 
@@ -47,7 +112,8 @@ def get_container_status() -> dict[str, Any]:
             "status": status,
             "uptime": uptime,
             "logs": [],  # No log streaming anymore
-            "container_status": container_status
+            "container_status": container_status,
+            "mode": "docker_compose"
         }
 
     except NotFound:
@@ -56,16 +122,18 @@ def get_container_status() -> dict[str, Any]:
             "uptime": None,
             "logs": [],
             "container_status": "not_found",
-            "message": "MCP container not found. Run: docker compose up -d archon-mcp"
+            "message": "MCP container not found. Run: docker compose up -d archon-mcp",
+            "mode": "docker_compose"
         }
     except Exception as e:
-        api_logger.error("Failed to get container status", exc_info=True)
+        api_logger.error("Failed to get container status (Docker)", exc_info=True)
         return {
             "status": "error",
             "uptime": None,
             "logs": [],
             "container_status": "error",
-            "error": str(e)
+            "error": str(e),
+            "mode": "docker_compose"
         }
     finally:
         if docker_client is not None:

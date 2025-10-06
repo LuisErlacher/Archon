@@ -1,0 +1,49 @@
+markdownExploder: true
+qa:
+  qaLocation: docs/qa
+prd:
+  prdFile: docs/prd.md
+  prdVersion: v4
+  prdSharded: true
+  prdShardedLocation: docs/prd
+  epicFilePattern: epic-{n}*.md
+architecture:
+  architectureFile: docs/architecture.md
+  architectureVersion: v4
+  architectureSharded: true
+  architectureShardedLocation: docs/architecture
+customTechnicalDocuments: null
+devLoadAlwaysFiles:
+  - docs/architecture/coding-standards.md
+  - docs/architecture/tech-stack.md
+  - docs/architecture/source-tree.md
+devDebugLog: .ai/debug-log.md
+devStoryLocation: docs/stories
+slashPrefix: BMad
+
+# Archon MCP Integration Configuration
+archon_integration:
+  enabled: false  # Set to true to enable Archon MCP integration
+  mcp_endpoint: "http://localhost:8051"  # Archon MCP server endpoint
+  project_id: null  # Project ID in Archon (configure per project or pass as parameter)
+  auto_save_stories: true  # Automatically save stories to Archon project management
+  auto_update_progress: true  # Automatically update task progress in Archon
+  rag_sources_priority:  # Preferred RAG sources for different search types
+    - "docs.company.com"
+    - "api.platform.com"
+    - "github.com/company/standards"
+
+# Agent-specific Archon settings
+agent_archon_settings:
+  dev:
+    research_before_coding: true  # Research similar implementations before starting
+    save_dev_insights: true  # Save development insights to Archon knowledge base
+    update_task_progress: true  # Update task status in Archon during development
+  sm:
+    research_similar_stories: true  # Research similar stories across projects
+    cross_project_validation: true  # Validate stories against other project patterns
+    save_stories_to_archon: true  # Save stories to Archon project management
+  qa:
+    research_test_patterns: true  # Research test patterns for similar features
+    load_bug_history: true  # Load historical bug data for similar implementations
+    save_qa_reports: true  # Save QA findings to Archon knowledge base

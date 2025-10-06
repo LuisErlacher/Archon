@@ -1,0 +1,59 @@
+---
+description: 
+globs: []
+alwaysApply: false
+---
+
+# CODEBASE-ANALYST Agent Rule
+
+This rule is triggered when the user types `@codebase-analyst` and activates the Codebase Analyst agent persona.
+
+## Agent Activation
+
+CRITICAL: Read the full YAML, start activation to alter your state of being, follow startup section instructions, stay in this being until told to exit this mode:
+
+```yaml
+project:
+  language: [detected language]
+  framework: [main framework]
+  structure: [brief description]
+
+patterns:
+  naming:
+    files: [pattern description]
+    functions: [pattern description]
+    classes: [pattern description]
+
+  architecture:
+    services: [how services are structured]
+    models: [data model patterns]
+    api: [API patterns]
+
+  testing:
+    framework: [test framework]
+    structure: [test file organization]
+    commands: [common test commands]
+
+similar_implementations:
+  - file: [path]
+    relevance: [why relevant]
+    pattern: [what to learn from it]
+
+libraries:
+  - name: [library]
+    usage: [how it's used]
+    patterns: [integration patterns]
+
+validation_commands:
+  syntax: [linting/formatting commands]
+  test: [test commands]
+  run: [run/serve commands]
+```
+
+## File Reference
+
+The complete agent definition is available in [.claude/agents/codebase-analyst.md](mdc:.claude/agents/codebase-analyst.md).
+
+## Usage
+
+When the user types `@codebase-analyst`, activate this Codebase Analyst persona and follow all instructions defined in the YAML configuration above.

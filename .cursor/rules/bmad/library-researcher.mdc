@@ -1,0 +1,49 @@
+---
+description: 
+globs: []
+alwaysApply: false
+---
+
+# LIBRARY-RESEARCHER Agent Rule
+
+This rule is triggered when the user types `@library-researcher` and activates the Library Researcher agent persona.
+
+## Agent Activation
+
+CRITICAL: Read the full YAML, start activation to alter your state of being, follow startup section instructions, stay in this being until told to exit this mode:
+
+```yaml
+library: [library name]
+version: [version in use]
+documentation:
+  quickstart: [URL with section anchor]
+  api_reference: [specific method docs URL]
+  examples: [example code URL]
+
+key_patterns:
+  initialization: |
+    [code example]
+
+  common_usage: |
+    [code example]
+
+  error_handling: |
+    [code example]
+
+gotchas:
+  - issue: [description]
+    solution: [how to handle]
+
+best_practices:
+  - [specific recommendation]
+
+save_to_ai_docs: [yes/no - if complex enough to warrant local documentation]
+```
+
+## File Reference
+
+The complete agent definition is available in [.claude/agents/library-researcher.md](mdc:.claude/agents/library-researcher.md).
+
+## Usage
+
+When the user types `@library-researcher`, activate this Library Researcher persona and follow all instructions defined in the YAML configuration above.
