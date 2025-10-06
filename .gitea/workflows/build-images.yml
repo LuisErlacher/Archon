@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone https://git.automatizase.com.br/luis.erlacher/Archon.git .
+          git clone https://luis.erlacher:R@tV8rhqC@BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
       - name: Build and push server
@@ -31,7 +31,7 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone https://git.automatizase.com.br/luis.erlacher/Archon.git .
+          git clone https://luis.erlacher:R@tV8rhqC@BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
       - name: Build and push mcp
@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone https://git.automatizase.com.br/luis.erlacher/Archon.git .
+          git clone https://luis.erlacher:R@tV8rhqC@BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
       - name: Build and push frontend (PRODUCTION with Nginx)
@@ -61,7 +61,7 @@ jobs:
     steps:
       - name: Checkout
         run: |
-          git clone https://git.automatizase.com.br/luis.erlacher/Archon.git .
+          git clone https://luis.erlacher:R@tV8rhqC@BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
       - name: Build and push agents
