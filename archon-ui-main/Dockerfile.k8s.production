@@ -1,0 +1,59 @@
+# Frontend - Kubernetes optimized build
+# React/Vite build with Nginx optimized for K8s
+# Optimizations:
+# - Non-root nginx user for security
+# - No HEALTHCHECK (K8s uses liveness/readiness probes)
+# - Optimized build cache
+# - Minimal production footprint
+
+# =============================================================================
+# STAGE 1: Build da aplicação React/Vite
+# =============================================================================
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++ git
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including devDependencies for build)
+RUN npm ci && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Build para produção
+RUN npm run build
+
+# =============================================================================
+# STAGE 2: Servir com Nginx (non-root)
+# =============================================================================
+FROM nginx:alpine
+
+# Remover configuração padrão do Nginx
+RUN rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/default.conf
+
+# Create non-root nginx user
+# Note: nginx:alpine already has nginx user, just need to configure permissions
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid
+
+# Copiar build do stage anterior
+COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
+
+# Copiar configuração customizada do Nginx
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expor porta 3737 (mantendo compatibilidade com a config atual)
+EXPOSE 3737
+
+# Switch to non-root user
+USER nginx
+
+# Iniciar Nginx
+# Note: nginx -g "daemon off;" is already in exec form by default in the base image
+CMD ["nginx", "-g", "daemon off;"]

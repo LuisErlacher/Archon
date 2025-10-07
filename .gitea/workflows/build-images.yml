@@ -11,7 +11,13 @@ env:
   REGISTRY_PATH: luis.erlacher/archon
 
 jobs:
-  build-server:
+  # =============================================================================
+  # DOCKER BUILDS - Original Dockerfiles for Docker Compose
+  # Tags: latest, docker-latest, docker-{sha}
+  # Execução em SÉRIE para não sobrecarregar memória do sistema
+  # =============================================================================
+
+  build-server-docker:
     runs-on: wsl
     steps:
       - name: Checkout
@@ -19,56 +25,156 @@ jobs:
           git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
-      - name: Build and push server
+      - name: Build and push server (Docker version)
         run: |
           cd python
-          docker build -f Dockerfile.server -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:${{ github.sha }} .
+          docker build -f Dockerfile.server \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:docker-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:docker-${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:latest
-          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:docker-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:docker-${{ github.sha }}
 
-  build-mcp:
+  build-mcp-docker:
     runs-on: wsl
+    needs: build-server-docker
     steps:
       - name: Checkout
         run: |
           git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
-      - name: Build and push mcp
+      - name: Build and push mcp (Docker version)
         run: |
           cd python
-          docker build -f Dockerfile.mcp -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:${{ github.sha }} .
+          docker build -f Dockerfile.mcp \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:docker-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:docker-${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:latest
-          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:docker-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:docker-${{ github.sha }}
 
-  build-frontend:
+  build-agents-docker:
     runs-on: wsl
+    needs: build-mcp-docker
     steps:
       - name: Checkout
         run: |
           git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
-      - name: Build and push frontend (PRODUCTION with Nginx)
+      - name: Build and push agents (Docker version)
+        run: |
+          cd python
+          docker build -f Dockerfile.agents \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:docker-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:docker-${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:docker-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:docker-${{ github.sha }}
+
+  build-frontend-docker:
+    runs-on: wsl
+    needs: build-agents-docker
+    steps:
+      - name: Checkout
+        run: |
+          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
+          git checkout ${{ github.sha }}
+
+      - name: Build and push frontend (Docker version - PRODUCTION with Nginx)
         run: |
           cd archon-ui-main
-          docker build -f Dockerfile.production -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:${{ github.sha }} .
+          docker build -f Dockerfile.production \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:docker-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:docker-${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:latest
-          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:docker-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:docker-${{ github.sha }}
 
-  build-agents:
+  # =============================================================================
+  # KUBERNETES BUILDS - Optimized Dockerfiles for K8s
+  # Tags: k8s-latest, k8s-{sha}
+  # Optimizations:
+  # - Non-root user for security
+  # - Proper signal propagation (graceful shutdown)
+  # - No HEALTHCHECK (K8s uses liveness/readiness probes)
+  # - Minimal production footprint
+  # Execução em SÉRIE após builds Docker
+  # =============================================================================
+
+  build-server-k8s:
     runs-on: wsl
+    needs: build-frontend-docker
     steps:
       - name: Checkout
         run: |
           git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
           git checkout ${{ github.sha }}
 
-      - name: Build and push agents
+      - name: Build and push server (K8s optimized)
         run: |
           cd python
-          docker build -f Dockerfile.agents -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:${{ github.sha }} .
-          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:latest
-          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:${{ github.sha }}
-          
-          #
+          docker build -f Dockerfile.k8s.server \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:k8s-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:k8s-${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:k8s-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:k8s-${{ github.sha }}
+
+  build-mcp-k8s:
+    runs-on: wsl
+    needs: build-server-k8s
+    steps:
+      - name: Checkout
+        run: |
+          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
+          git checkout ${{ github.sha }}
+
+      - name: Build and push mcp (K8s optimized)
+        run: |
+          cd python
+          docker build -f Dockerfile.k8s.mcp \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:k8s-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:k8s-${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:k8s-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:k8s-${{ github.sha }}
+
+  build-agents-k8s:
+    runs-on: wsl
+    needs: build-mcp-k8s
+    steps:
+      - name: Checkout
+        run: |
+          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
+          git checkout ${{ github.sha }}
+
+      - name: Build and push agents (K8s optimized)
+        run: |
+          cd python
+          docker build -f Dockerfile.k8s.agents \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:k8s-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:k8s-${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:k8s-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:k8s-${{ github.sha }}
+
+  build-frontend-k8s:
+    runs-on: wsl
+    needs: build-agents-k8s
+    steps:
+      - name: Checkout
+        run: |
+          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
+          git checkout ${{ github.sha }}
+
+      - name: Build and push frontend (K8s optimized - PRODUCTION with Nginx)
+        run: |
+          cd archon-ui-main
+          docker build -f Dockerfile.k8s.production \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:k8s-latest \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:k8s-${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:k8s-latest
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/frontend:k8s-${{ github.sha }}

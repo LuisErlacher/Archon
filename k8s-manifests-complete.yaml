@@ -70,14 +70,25 @@ spec:
       labels:
         app: archon-server
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      terminationGracePeriodSeconds: 30
       containers:
       - name: server
-        # IMPORTANTE: Substitua pelo seu registry
-        # Exemplos:
-        #   - Gitea: git.automatizase.com.br/luis.erlacher/archon/server:latest
-        #   - Docker Hub: docker.io/seu-usuario/archon-server:latest
-        image: git.automatizase.com.br/luis.erlacher/archon/server:latest
+        # IMPORTANTE: Usando imagem K8s otimizada (non-root, graceful shutdown)
+        # Para Docker Compose, use: server:latest ou server:docker-latest
+        # Para Kubernetes, use: server:k8s-latest (RECOMENDADO)
+        image: git.automatizase.com.br/luis.erlacher/archon/server:k8s-latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
         ports:
         - containerPort: 8181
           name: http
@@ -208,14 +219,25 @@ spec:
       labels:
         app: archon-mcp
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      terminationGracePeriodSeconds: 30
       containers:
       - name: mcp
-        # IMPORTANTE: Substitua pelo seu registry
-        # Exemplos:
-        #   - Gitea: git.automatizase.com.br/luis.erlacher/archon/mcp:latest
-        #   - Docker Hub: docker.io/seu-usuario/archon-mcp:latest
-        image: git.automatizase.com.br/luis.erlacher/archon/mcp:latest
+        # IMPORTANTE: Usando imagem K8s otimizada (non-root, graceful shutdown)
+        # Para Docker Compose, use: mcp:latest ou mcp:docker-latest
+        # Para Kubernetes, use: mcp:k8s-latest (RECOMENDADO)
+        image: git.automatizase.com.br/luis.erlacher/archon/mcp:k8s-latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
         ports:
         - containerPort: 8051
           name: http
@@ -338,14 +360,25 @@ spec:
       labels:
         app: archon-frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # nginx user in alpine
+        runAsGroup: 101
+        fsGroup: 101
+      terminationGracePeriodSeconds: 30
       containers:
       - name: frontend
-        # IMPORTANTE: Substitua pelo seu registry
-        # Exemplos:
-        #   - Gitea: git.automatizase.com.br/luis.erlacher/archon/frontend:latest
-        #   - Docker Hub: docker.io/seu-usuario/archon-frontend:latest
-        image: git.automatizase.com.br/luis.erlacher/archon/frontend:latest
+        # IMPORTANTE: Usando imagem K8s otimizada (non-root nginx)
+        # Para Docker Compose, use: frontend:latest ou frontend:docker-latest
+        # Para Kubernetes, use: frontend:k8s-latest (RECOMENDADO)
+        image: git.automatizase.com.br/luis.erlacher/archon/frontend:k8s-latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
         ports:
         - containerPort: 3737
           name: http

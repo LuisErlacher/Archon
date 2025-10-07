@@ -1,0 +1,91 @@
+# Server Service - Kubernetes optimized build
+# Optimizations:
+# - Non-root user for security
+# - Proper signal propagation for graceful shutdown
+# - No HEALTHCHECK (K8s uses liveness/readiness probes)
+# - Optimized layer caching
+# - Minimal production footprint
+
+FROM python:3.12 AS builder
+
+WORKDIR /build
+
+# Install build dependencies and uv
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
+
+# Copy pyproject.toml for dependency installation
+COPY pyproject.toml .
+
+# Install server dependencies to a virtual environment using uv
+RUN uv venv /venv && \
+    . /venv/bin/activate && \
+    uv pip install --group server --group server-reranking && \
+    rm -rf ~/.cache/uv ~/.cache/pip
+
+# Runtime stage
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install runtime dependencies for Playwright (minimal set)
+RUN apt-get update && apt-get install -y \
+    wget \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libwayland-client0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xdg-utils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Create non-root user BEFORE copying files
+RUN groupadd -r appuser -g 1001 && \
+    useradd -r -g appuser -u 1001 appuser && \
+    mkdir -p /app && chown -R appuser:appuser /app
+
+# Copy the virtual environment from builder
+COPY --from=builder --chown=appuser:appuser /venv /venv
+
+# Install Playwright browsers as root (needs permissions)
+ENV PATH=/venv/bin:$PATH
+RUN playwright install chromium && \
+    chown -R appuser:appuser /root/.cache/ms-playwright 2>/dev/null || true
+
+# Copy server code (production only - no tests)
+COPY --chown=appuser:appuser src/server/ src/server/
+COPY --chown=appuser:appuser src/__init__.py src/
+
+# Set environment variables
+ENV PYTHONPATH="/app:$PYTHONPATH"
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/venv/bin:$PATH"
+
+# Expose Server port
+ARG ARCHON_SERVER_PORT=8181
+ENV ARCHON_SERVER_PORT=${ARCHON_SERVER_PORT}
+EXPOSE ${ARCHON_SERVER_PORT}
+
+# Switch to non-root user
+USER appuser
+
+# Run the Server service with proper signal propagation for K8s
+# Using exec to ensure SIGTERM reaches the Python process for graceful shutdown
+CMD ["sh", "-c", "exec python -m uvicorn src.server.main:socket_app --host 0.0.0.0 --port ${ARCHON_SERVER_PORT} --workers 1"]
