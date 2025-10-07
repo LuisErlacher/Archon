@@ -18,7 +18,7 @@ jobs:
   # =============================================================================
 
   build-server-docker:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:docker-${{ github.sha }}
 
   build-mcp-docker:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-server-docker
     steps:
       - name: Checkout
@@ -53,7 +53,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:docker-${{ github.sha }}
 
   build-agents-docker:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-mcp-docker
     steps:
       - name: Checkout
@@ -71,7 +71,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:docker-${{ github.sha }}
 
   build-frontend-docker:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-agents-docker
     steps:
       - name: Checkout
@@ -100,7 +100,7 @@ jobs:
   # =============================================================================
 
   build-server-k8s:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-frontend-docker
     steps:
       - name: Checkout
@@ -116,7 +116,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:k8s-${{ github.sha }}
 
   build-mcp-k8s:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-server-k8s
     steps:
       - name: Checkout
@@ -132,7 +132,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:k8s-${{ github.sha }}
 
   build-agents-k8s:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-mcp-k8s
     steps:
       - name: Checkout
@@ -148,7 +148,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:k8s-${{ github.sha }}
 
   build-frontend-k8s:
-    runs-on: ubuntu-latest
+    runs-on: wsl
     needs: build-agents-k8s
     steps:
       - name: Checkout
