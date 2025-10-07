@@ -18,12 +18,10 @@ jobs:
   # =============================================================================
 
   build-server-docker:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push server (Docker version)
         run: |
@@ -37,13 +35,11 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:docker-${{ github.sha }}
 
   build-mcp-docker:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-server-docker
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push mcp (Docker version)
         run: |
@@ -57,13 +53,11 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:docker-${{ github.sha }}
 
   build-agents-docker:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-mcp-docker
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push agents (Docker version)
         run: |
@@ -77,13 +71,11 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:docker-${{ github.sha }}
 
   build-frontend-docker:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-agents-docker
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push frontend (Docker version - PRODUCTION with Nginx)
         run: |
@@ -108,13 +100,11 @@ jobs:
   # =============================================================================
 
   build-server-k8s:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-frontend-docker
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push server (K8s optimized)
         run: |
@@ -126,13 +116,11 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/server:k8s-${{ github.sha }}
 
   build-mcp-k8s:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-server-k8s
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push mcp (K8s optimized)
         run: |
@@ -144,13 +132,11 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/mcp:k8s-${{ github.sha }}
 
   build-agents-k8s:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-mcp-k8s
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push agents (K8s optimized)
         run: |
@@ -162,13 +148,11 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_PATH }}/agents:k8s-${{ github.sha }}
 
   build-frontend-k8s:
-    runs-on: wsl
+    runs-on: ubuntu-latest
     needs: build-agents-k8s
     steps:
       - name: Checkout
-        run: |
-          git clone https://luis.erlacher:R%40tV8rhqC%40BN3ttfF8@git.automatizase.com.br/luis.erlacher/Archon.git .
-          git checkout ${{ github.sha }}
+        uses: actions/checkout@v4
 
       - name: Build and push frontend (K8s optimized - PRODUCTION with Nginx)
         run: |
