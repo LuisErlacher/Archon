@@ -172,13 +172,36 @@ async def get_mcp_config():
         try:
             api_logger.info("Getting MCP server configuration")
 
-            # Get actual MCP port from environment or use default
-            mcp_port = int(os.getenv("ARCHON_MCP_PORT", "8051"))
+            # Get MCP public URL from environment (for production/Kubernetes)
+            # Format: "domain.com:8051" or "localhost:8051"
+            mcp_public_url = os.getenv("MCP_PUBLIC_URL")
 
-            # Configuration for streamable-http mode with actual port
+            if mcp_public_url:
+                # Parse public URL to extract host and port
+                if ":" in mcp_public_url:
+                    host, port_str = mcp_public_url.rsplit(":", 1)
+                    try:
+                        port = int(port_str)
+                    except ValueError:
+                        # If port is not a number, use default
+                        host = mcp_public_url
+                        port = int(os.getenv("ARCHON_MCP_PORT", "8051"))
+                else:
+                    # No port in URL, use default
+                    host = mcp_public_url
+                    port = int(os.getenv("ARCHON_MCP_PORT", "8051"))
+
+                api_logger.info(f"Using MCP_PUBLIC_URL - host={host}, port={port}")
+            else:
+                # Fallback to legacy behavior (localhost)
+                host = os.getenv("ARCHON_HOST", "localhost")
+                port = int(os.getenv("ARCHON_MCP_PORT", "8051"))
+                api_logger.info(f"Using legacy ARCHON_HOST - host={host}, port={port}")
+
+            # Configuration for streamable-http mode
             config = {
-                "host": os.getenv("ARCHON_HOST", "localhost"),
-                "port": mcp_port,
+                "host": host,
+                "port": port,
                 "transport": "streamable-http",
             }
 

@@ -64,10 +64,12 @@ RUN groupadd -r appuser -g 1001 && \
 # Copy the virtual environment from builder
 COPY --from=builder --chown=appuser:appuser /venv /venv
 
-# Install Playwright browsers as root (needs permissions)
+# Install Playwright browsers in a location accessible to appuser
 ENV PATH=/venv/bin:$PATH
-RUN playwright install chromium && \
-    chown -R appuser:appuser /root/.cache/ms-playwright 2>/dev/null || true
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright
+RUN mkdir -p /app/ms-playwright && \
+    playwright install chromium && \
+    chown -R appuser:appuser /app/ms-playwright
 
 # Copy server code (production only - no tests)
 COPY --chown=appuser:appuser src/server/ src/server/
@@ -77,6 +79,7 @@ COPY --chown=appuser:appuser src/__init__.py src/
 ENV PYTHONPATH="/app:$PYTHONPATH"
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/venv/bin:$PATH"
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/ms-playwright
 
 # Expose Server port
 ARG ARCHON_SERVER_PORT=8181

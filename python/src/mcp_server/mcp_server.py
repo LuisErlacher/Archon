@@ -31,6 +31,8 @@ from typing import Any
 from dotenv import load_dotenv
 
 from mcp.server.fastmcp import Context, FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 # Add the project root to Python path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -332,7 +334,31 @@ except Exception as e:
     raise
 
 
-# Health check endpoint
+# HTTP health check endpoint for K8s and frontend polling
+@mcp.custom_route("/health", methods=["GET"])
+async def http_health_check(request: Request) -> JSONResponse:
+    """
+    HTTP health check endpoint for K8s probes and frontend monitoring.
+
+    This is a lightweight endpoint that returns 200 OK to indicate the server is running.
+    For detailed health checks including dependent services, use the health_check tool.
+    """
+    try:
+        # Quick health check without heavy dependencies
+        return JSONResponse({
+            "status": "healthy",
+            "service": "mcp",
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        logger.error(f"HTTP health check failed: {e}")
+        return JSONResponse(
+            {"status": "unhealthy", "error": str(e)},
+            status_code=503
+        )
+
+
+# MCP tool health check endpoint (detailed health status)
 @mcp.tool()
 async def health_check(ctx: Context) -> str:
     """

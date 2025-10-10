@@ -29,6 +29,8 @@ services:
       - ARCHON_AGENTS_PORT=${ARCHON_AGENTS_PORT:-8052}
       - AGENTS_ENABLED=${AGENTS_ENABLED:-false}
       - ARCHON_HOST=${HOST:-localhost}
+      - PLAYWRIGHT_BROWSERS_PATH=/tmp/ms-playwright
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-localhost:8051}
     networks:
       - app-network
     volumes:

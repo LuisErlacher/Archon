@@ -134,6 +134,71 @@ make test-fe             # Frontend tests only
 make test-be             # Backend tests only
 ```
 
+### Kubernetes Deployment
+
+**Build and push images to registry:**
+
+```bash
+# Navigate to project root
+cd /home/lperl/Archon
+
+# Build and push Server image (includes Playwright and MCP_PUBLIC_URL fixes)
+docker build -f python/Dockerfile.k8s.server \
+  -t git.automatizase.com.br/luis.erlacher/archon/server:k8s-latest \
+  python/
+docker push git.automatizase.com.br/luis.erlacher/archon/server:k8s-latest
+
+# Build and push MCP image
+docker build -f python/Dockerfile.k8s.mcp \
+  -t git.automatizase.com.br/luis.erlacher/archon/mcp:k8s-latest \
+  python/
+docker push git.automatizase.com.br/luis.erlacher/archon/mcp:k8s-latest
+
+# Build and push Frontend image (if needed)
+docker build -f archon-ui-main/Dockerfile.k8s.production \
+  -t git.automatizase.com.br/luis.erlacher/archon/frontend:k8s-latest \
+  archon-ui-main/
+docker push git.automatizase.com.br/luis.erlacher/archon/frontend:k8s-latest
+
+# Optional: Build and push Agents image
+docker build -f python/Dockerfile.k8s.agents \
+  -t git.automatizase.com.br/luis.erlacher/archon/agents:k8s-latest \
+  python/
+docker push git.automatizase.com.br/luis.erlacher/archon/agents:k8s-latest
+```
+
+**Deploy to Kubernetes:**
+
+```bash
+# IMPORTANT: First, update ConfigMap with your domain!
+# Edit k8s-manifests-complete.yaml line 61:
+#   MCP_PUBLIC_URL: "your-domain.com:8051"  # ← CHANGE THIS!
+
+# Apply manifests
+kubectl apply -f k8s-manifests-complete.yaml
+
+# Restart deployments to use new images
+kubectl rollout restart deployment/archon-server -n archon
+kubectl rollout restart deployment/archon-mcp -n archon
+kubectl rollout restart deployment/archon-frontend -n archon
+
+# Monitor deployment status
+kubectl rollout status deployment/archon-server -n archon
+kubectl get pods -n archon -w
+
+# View logs
+kubectl logs -f deployment/archon-server -n archon
+kubectl logs -f deployment/archon-mcp -n archon
+
+# Verify configuration
+kubectl get configmap archon-config -n archon -o yaml | grep -A 2 MCP_PUBLIC_URL
+```
+
+**Complete K8s documentation:**
+- Full deployment guide: `K8S_COMPLETE_ADJUSTMENTS.md`
+- MCP Public URL configuration: `MCP_PUBLIC_URL_GUIDE.md`
+- Image naming convention: `service:k8s-latest` (e.g., `server:k8s-latest`, `mcp:k8s-latest`)
+
 ## Architecture Overview
 
 @PRPs/ai_docs/ARCHITECTURE.md
