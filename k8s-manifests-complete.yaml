@@ -49,6 +49,17 @@ data:
   TRANSPORT: "sse"
   AGENTS_ENABLED: "false"
 
+  # Playwright Configuration
+  PLAYWRIGHT_BROWSERS_PATH: "/app/ms-playwright"
+
+  # MCP Public URL Configuration
+  # Format: "domain.com" or "domain.com:8051" or "localhost:8051"
+  # This is used to generate the MCP client configuration JSON
+  # IMPORTANTE: Configure this with your actual domain!
+  # Example: "archon.automatizase.com.br" (port will be inferred from ARCHON_MCP_PORT)
+  # Example: "archon.automatizase.com.br:8051" (explicit port)
+  MCP_PUBLIC_URL: "localhost:8051"  # CHANGE THIS TO YOUR DOMAIN!
+
 ---
 # =============================================================================
 # DEPLOYMENT - ARCHON SERVER (Backend Principal)
@@ -151,28 +162,49 @@ spec:
         - name: MCP_SERVICE_URL
           value: "http://archon-mcp-service.archon.svc.cluster.local:8051"
 
+        # Playwright configuration
+        - name: PLAYWRIGHT_BROWSERS_PATH
+          value: "/app/ms-playwright"
+
+        # MCP Public URL (for client configuration)
+        - name: MCP_PUBLIC_URL
+          valueFrom:
+            configMapKeyRef:
+              name: archon-config
+              key: MCP_PUBLIC_URL
+
         resources:
           requests:
-            memory: "512Mi"
+            memory: "768Mi"
             cpu: "500m"
           limits:
-            memory: "1Gi"
-            cpu: "1000m"
+            memory: "2Gi"
+            cpu: "2000m"
+            ephemeral-storage: "5Gi"
+
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8181
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12
 
         livenessProbe:
           httpGet:
             path: /health
             port: 8181
-          initialDelaySeconds: 40
+          initialDelaySeconds: 60
           periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
+          timeoutSeconds: 15
+          failureThreshold: 5
 
         readinessProbe:
           httpGet:
             path: /health
             port: 8181
-          initialDelaySeconds: 10
+          initialDelaySeconds: 15
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3

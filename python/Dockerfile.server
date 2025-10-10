@@ -51,9 +51,12 @@ RUN apt-get update && apt-get install -y \
 # Copy the virtual environment from builder
 COPY --from=builder /venv /venv
 
-# Install Playwright browsers
+# Install Playwright browsers in accessible location
 ENV PATH=/venv/bin:$PATH
-RUN playwright install chromium
+ENV PLAYWRIGHT_BROWSERS_PATH=/tmp/ms-playwright
+RUN mkdir -p /tmp/ms-playwright && \
+    playwright install chromium && \
+    chmod -R 777 /tmp/ms-playwright
 
 # Copy server code and tests
 COPY src/server/ src/server/
@@ -64,6 +67,7 @@ COPY tests/ tests/
 ENV PYTHONPATH="/app:$PYTHONPATH"
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/venv/bin:$PATH"
+ENV PLAYWRIGHT_BROWSERS_PATH=/tmp/ms-playwright
 
 # Expose Server port
 ARG ARCHON_SERVER_PORT=8181
