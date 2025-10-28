@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-frontend
+  labels:
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: archon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: archon
+    spec:
+      containers:
+        - name: archon-frontend
+          image: coleam00/archon-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3737
+              protocol: TCP
+          env:
+            - name: VITE_API_URL
+              value: https://archon.automatizase.com.br/api
+            - name: API_URL
+              value: https://archon.automatizase.com.br/api
+            - name: VITE_MCP_URL
+              value: https://archon.automatizase.com.br/mcp
+            - name: MCP_URL
+              value: https://archon.automatizase.com.br/mcp
+            - name: VITE_ARCHON_SERVER_PORT
+              value: "8181"
+            - name: ARCHON_SERVER_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: ARCHON_SERVER_PORT
+            - name: VITE_ARCHON_MCP_PORT
+              value: "8051"
+            - name: ARCHON_MCP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: ARCHON_MCP_PORT
+            - name: HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: HOST
+            - name: VITE_ALLOWED_HOSTS
+              value: "archon.automatizase.com.br"
+            - name: VITE_SHOW_DEVTOOLS
+              value: "false"
+            - name: DOCKER_ENV
+              value: "true"
+            - name: PROD
+              value: "false"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

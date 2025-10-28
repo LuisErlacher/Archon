@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: archon-agents-service
+  labels:
+    app.kubernetes.io/component: agents
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8052
+      protocol: TCP
+      targetPort: http
+  selector:
+    app.kubernetes.io/component: agents

@@ -20,3 +20,26 @@ devLoadAlwaysFiles:
 devDebugLog: .ai/debug-log.md
 devStoryLocation: docs/stories
 slashPrefix: BMad
+
+# Sprint and Workflow Management
+sprint:
+  sprintLocation: docs/sprints
+  currentSprintFile: docs/sprints/sprint-current.md
+  sprintArchiveLocation: docs/sprints/sprint-archive
+  sprintFilePattern: sprint-{n}-*.md
+
+workflow:
+  workflowLocation: docs/workflow
+  currentWorkflowFile: docs/workflow/workflow-status.md
+  workflowHistoryFile: docs/workflow/workflow-history.md
+  workflowTemplatesLocation: docs/workflow/workflow-templates
+
+# AI Agent Context
+agentContext:
+  contextLocation: .ai
+  currentContextFile: .ai/current-context.md
+  quickRefFile: .ai/quick-ref.md
+  agentLoadAlwaysFiles:
+    - .ai/current-context.md
+    - docs/sprints/sprint-current.md
+    - docs/workflow/workflow-status.md

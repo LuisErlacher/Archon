@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-agents
+  namespace: unlkd
+  labels:
+    app.kubernetes.io/name: archon-agents
+    app.kubernetes.io/instance: archon
+    app.kubernetes.io/component: agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: archon-agents
+      app.kubernetes.io/instance: archon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: archon-agents
+        app.kubernetes.io/instance: archon
+        app.kubernetes.io/component: agents
+    spec:
+      containers:
+        - name: archon-agents
+          # IMPORTANT: Build and push your image first:
+          # docker build -t your-registry/archon-agents:latest -f python/Dockerfile.agents python/
+          # docker push your-registry/archon-agents:latest
+          image: your-registry/archon-agents:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8052
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: archon-secret
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

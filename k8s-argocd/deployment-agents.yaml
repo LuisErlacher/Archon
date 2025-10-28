@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-agents
+  labels:
+    app.kubernetes.io/component: agents
+    app.kubernetes.io/part-of: archon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: agents
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: agents
+        app.kubernetes.io/part-of: archon
+    spec:
+      containers:
+        - name: archon-agents
+          image: coleam00/archon-agents:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8052
+              protocol: TCP
+          env:
+            - name: SUPABASE_URL
+              value: https://supabase.automatizase.com.br
+            - name: SUPABASE_SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-jwt
+                  key: serviceKey
+            - name: OPENAI_API_KEY
+              value: ""
+            - name: LOGFIRE_TOKEN
+              value: ""
+            - name: SERVICE_DISCOVERY_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: SERVICE_DISCOVERY_MODE
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: LOG_LEVEL
+            - name: ARCHON_AGENTS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: ARCHON_AGENTS_PORT
+            - name: ARCHON_SERVER_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: archon-config
+                  key: ARCHON_SERVER_PORT
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

@@ -1,0 +1,219 @@
+title: Workflow Status - {{project_name}}
+type: workflow-status
+version: 1.0
+
+sections:
+  - current_status:
+      title: Current Workflow Status
+      content: |
+        # 🚀 Current Workflow Status
+
+        **Last Updated:** {{last_updated}}
+        **Updated By:** {{updated_by}}
+
+        ---
+
+        ## 📍 Current Position
+
+        **Active Sprint:** Sprint {{current_sprint_number}} - {{sprint_name}}
+        **Sprint Progress:** {{sprint_progress_percentage}}% complete (Day {{sprint_day}} of {{sprint_total_days}})
+        **Current Epic:** Epic #{{current_epic_number}} - {{current_epic_title}}
+        **Current Story:** Story {{current_story_number}} - {{current_story_title}}
+
+        ---
+
+  - active_work:
+      title: Active Work
+      content: |
+        ## 🔨 Active Work Items
+
+        ### In Progress
+
+        {{#in_progress_items}}
+        #### {{item_type}}: {{item_title}}
+        - **ID:** {{item_id}}
+        - **Assignee:** {{item_assignee}}
+        - **Status:** {{item_status}}
+        - **Progress:** {{item_progress}}%
+        - **Started:** {{item_started_date}}
+        - **Estimated Completion:** {{item_estimated_completion}}
+        - **Blockers:** {{item_blockers}}
+
+        **Recent Updates:**
+        {{#recent_updates}}
+        - {{update_date}}: {{update_description}}
+        {{/recent_updates}}
+
+        ---
+        {{/in_progress_items}}
+
+  - workflow_stage:
+      title: Current Workflow Stage
+      content: |
+        ## 📊 Workflow Stage
+
+        **Current Phase:** {{current_phase}} ({{current_phase_number}} of {{total_phases}})
+
+        ### Phase Breakdown
+
+        {{#phases}}
+        {{#if is_current}}
+        #### ▶️ {{phase_number}}. {{phase_name}} (CURRENT)
+        {{else}}
+        {{#if is_completed}}
+        #### ✅ {{phase_number}}. {{phase_name}} (COMPLETED)
+        {{else}}
+        #### ⏸️ {{phase_number}}. {{phase_name}} (PENDING)
+        {{/if}}
+        {{/if}}
+
+        **Activities:**
+        {{#phase_activities}}
+        - {{#if is_completed}}✅{{else}}⬜{{/if}} {{activity_name}} {{#if activity_assignee}}({{activity_assignee}}){{/if}}
+        {{/phase_activities}}
+
+        **Expected Outputs:**
+        {{#expected_outputs}}
+        - {{output_name}} {{#if output_completed}}✅{{else}}⏳{{/if}}
+        {{/expected_outputs}}
+
+        ---
+        {{/phases}}
+
+  - epic_story_status:
+      title: Epic & Story Status
+      content: |
+        ## 📚 Epic & Story Status
+
+        ### Active Epics
+
+        {{#active_epics}}
+        #### Epic #{{epic_number}}: {{epic_title}}
+
+        **Status:** {{epic_status}}
+        **Progress:** {{epic_progress}}%
+        **Stories:** {{epic_completed_stories}}/{{epic_total_stories}} completed
+
+        **Stories Breakdown:**
+        {{#epic_stories}}
+        - {{#if story_completed}}✅{{else if story_in_progress}}🔨{{else}}⬜{{/if}} Story {{story_number}}: {{story_title}} ({{story_status}})
+        {{/epic_stories}}
+
+        ---
+        {{/active_epics}}
+
+  - blockers_risks:
+      title: Blockers & Risks
+      content: |
+        ## 🚧 Blockers & Risks
+
+        ### Active Blockers
+
+        {{#blockers}}
+        #### 🚨 Blocker {{blocker_number}}: {{blocker_title}}
+
+        **Severity:** {{blocker_severity}} (High/Medium/Low)
+        **Impact:** {{blocker_impact}}
+        **Blocking:** {{blocked_items}}
+        **Owner:** {{blocker_owner}}
+        **Reported:** {{blocker_reported_date}}
+
+        **Resolution Plan:**
+        {{blocker_resolution_plan}}
+
+        **Status:** {{blocker_status}}
+
+        ---
+        {{/blockers}}
+
+        ### Identified Risks
+
+        {{#risks}}
+        - **Risk:** {{risk_description}}
+          - **Probability:** {{risk_probability}} (High/Medium/Low)
+          - **Impact:** {{risk_impact}} (High/Medium/Low)
+          - **Mitigation:** {{risk_mitigation}}
+
+        {{/risks}}
+
+  - upcoming_work:
+      title: Upcoming Work
+      content: |
+        ## 🔜 Upcoming Work
+
+        ### Next Up (Next 3-5 Days)
+
+        {{#upcoming_items}}
+        #### {{item_number}}. {{item_title}}
+
+        **Type:** {{item_type}} (Epic/Story/Task)
+        **Priority:** {{item_priority}}
+        **Estimated Start:** {{item_estimated_start}}
+        **Dependencies:** {{item_dependencies}}
+        **Assignee:** {{item_assignee}}
+
+        ---
+        {{/upcoming_items}}
+
+  - completed_work:
+      title: Recently Completed
+      content: |
+        ## ✅ Recently Completed (Last 7 Days)
+
+        {{#completed_items}}
+        - **{{completed_date}}**: {{item_type}} - {{item_title}}
+          - Completed by: {{item_assignee}}
+          - Result: {{item_result}}
+
+        {{/completed_items}}
+
+  - team_status:
+      title: Team Status
+      content: |
+        ## 👥 Team Status
+
+        {{#team_members}}
+        ### {{member_name}} ({{member_role}})
+
+        **Current Assignment:** {{member_current_task}}
+        **Capacity:** {{member_capacity}}% available
+        **Status:** {{member_status}} (Available/Busy/Blocked/OOO)
+
+        **This Week:**
+        {{#member_weekly_work}}
+        - {{work_item}}
+        {{/member_weekly_work}}
+
+        ---
+        {{/team_members}}
+
+  - quick_reference:
+      title: Quick Reference
+      content: |
+        ## 🔗 Quick Reference
+
+        **Project Links:**
+        - Archon MCP Project ID: `{{archon_project_id}}`
+        - Epic Document: `{{epic_document_path}}`
+        - Sprint Planning: `{{sprint_planning_path}}`
+        - GitHub Repository: {{github_repo_url}}
+
+        **Key Contacts:**
+        {{#key_contacts}}
+        - **{{contact_role}}**: {{contact_name}} ({{contact_availability}})
+        {{/key_contacts}}
+
+        **Important Dates:**
+        {{#important_dates}}
+        - {{date_label}}: {{date_value}}
+        {{/important_dates}}
+
+        ---
+
+metadata:
+  created_by: "{{created_by}}"
+  created_at: "{{created_at}}"
+  updated_at: "{{updated_at}}"
+  workflow_version: "{{workflow_version}}"
+  archon_project_id: "{{archon_project_id}}"
+  current_sprint_id: "{{current_sprint_id}}"

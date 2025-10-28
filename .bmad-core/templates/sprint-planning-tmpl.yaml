@@ -1,0 +1,138 @@
+title: Sprint {{sprint_number}} Planning
+type: sprint-planning
+version: 1.0
+
+sections:
+  - sprint_metadata:
+      title: Sprint Metadata
+      content: |
+        ## Sprint {{sprint_number}} - {{sprint_name}}
+
+        **Sprint Duration:** {{start_date}} to {{end_date}} ({{duration_weeks}} weeks)
+        **Sprint Goal:** {{sprint_goal}}
+        **Team Capacity:** {{team_capacity}} hours
+
+        ---
+
+  - epic_focus:
+      title: Epic Focus
+      content: |
+        ## Primary Epic
+
+        **Epic:** {{primary_epic_title}}
+        **Epic ID:** {{primary_epic_id}}
+        **Epic Goal:** {{primary_epic_goal}}
+
+        **Stories Planned:**
+        {{#stories}}
+        - [ ] **Story {{story_number}}**: {{story_title}} ({{story_points}}pts) - Status: {{story_status}}
+          - Epic: {{epic_reference}}
+          - Assignee: {{story_assignee}}
+          - Priority: {{story_priority}}
+        {{/stories}}
+
+        ---
+
+  - sprint_backlog:
+      title: Sprint Backlog
+      content: |
+        ## Sprint Backlog
+
+        ### Stories in Sprint
+
+        {{#backlog_stories}}
+        #### Story {{story_number}}: {{story_title}}
+
+        **Story Points:** {{story_points}}
+        **Status:** {{story_status}}
+        **Assignee:** {{story_assignee}}
+
+        **Tasks:**
+        {{#tasks}}
+        - [ ] {{task_title}} ({{task_estimate}}h) - {{task_assignee}}
+        {{/tasks}}
+
+        **Acceptance Criteria:**
+        {{#acceptance_criteria}}
+        - [ ] {{criterion}}
+        {{/acceptance_criteria}}
+
+        ---
+        {{/backlog_stories}}
+
+  - daily_progress:
+      title: Daily Progress Tracking
+      content: |
+        ## Daily Progress
+
+        ### Day 1 - {{day_1_date}}
+        **Completed:**
+        {{#day_1_completed}}
+        - {{item}}
+        {{/day_1_completed}}
+
+        **Blockers:**
+        {{#day_1_blockers}}
+        - {{blocker}}
+        {{/day_1_blockers}}
+
+        **Next:**
+        {{#day_1_next}}
+        - {{item}}
+        {{/day_1_next}}
+
+        ---
+
+        _[Repeat for each day of sprint]_
+
+  - sprint_metrics:
+      title: Sprint Metrics
+      content: |
+        ## Sprint Metrics
+
+        **Velocity:**
+        - Planned: {{planned_velocity}} points
+        - Completed: {{completed_velocity}} points
+        - Carry-over: {{carryover_velocity}} points
+
+        **Burndown:**
+        - Day 1: {{day_1_remaining}} points remaining
+        - Day 2: {{day_2_remaining}} points remaining
+        - ...
+
+        **Task Completion Rate:**
+        - Total Tasks: {{total_tasks}}
+        - Completed: {{completed_tasks}} ({{completion_percentage}}%)
+        - In Progress: {{in_progress_tasks}}
+        - Blocked: {{blocked_tasks}}
+
+        ---
+
+  - retrospective:
+      title: Sprint Retrospective
+      content: |
+        ## Sprint Retrospective
+
+        ### What Went Well ✅
+        {{#went_well}}
+        - {{item}}
+        {{/went_well}}
+
+        ### What Could Be Improved 🔄
+        {{#to_improve}}
+        - {{item}}
+        {{/to_improve}}
+
+        ### Action Items for Next Sprint 🎯
+        {{#action_items}}
+        - [ ] {{item}} - Assignee: {{assignee}}
+        {{/action_items}}
+
+        ---
+
+metadata:
+  created_by: "{{created_by}}"
+  created_at: "{{created_at}}"
+  updated_at: "{{updated_at}}"
+  sprint_status: "{{sprint_status}}" # planning, active, completed, cancelled
+  archon_project_id: "{{archon_project_id}}" # Link to Archon MCP project

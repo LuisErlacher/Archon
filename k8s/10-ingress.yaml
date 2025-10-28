@@ -1,0 +1,84 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: archon
+  namespace: unlkd
+  labels:
+    app.kubernetes.io/name: archon
+    app.kubernetes.io/instance: archon
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 50M
+    nginx.ingress.kubernetes.io/client-max-body-size: 50M
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: archon-server
+    nginx.ingress.kubernetes.io/location-snippet: |
+      more_set_headers "X-Frame-Options: deny";
+      more_set_headers "Content-Security-Policy: frame-ancestors 'none'";
+      more_set_headers "X-Permitted-Cross-Domain-Policies: none";
+      more_set_headers "Referrer-Policy: no-referrer";
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - archon.digiworker.com.br
+      secretName: archon-frontend-tls
+    - hosts:
+        - server.digiworker.com.br
+      secretName: archon-server-tls
+    - hosts:
+        - mcp.digiworker.com.br
+      secretName: archon-mcp-tls
+    - hosts:
+        - agents.digiworker.com.br
+      secretName: archon-agents-tls
+  rules:
+    # Frontend
+    - host: archon.digiworker.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: archon-frontend
+                port:
+                  number: 3737
+
+    # Backend API Server
+    - host: server.digiworker.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: archon-server
+                port:
+                  number: 8181
+
+    # MCP Server
+    - host: mcp.digiworker.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: archon-mcp
+                port:
+                  number: 8051
+
+    # Agents Server
+    - host: agents.digiworker.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: archon-agents
+                port:
+                  number: 8052
