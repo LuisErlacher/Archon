@@ -559,6 +559,46 @@ def main():
         mcp_logger.info("🔥 Logfire initialized for MCP server")
         mcp_logger.info(f"🌟 Starting MCP server - host={server_host}, port={server_port}")
 
+        # Get the FastAPI app from FastMCP
+        app = mcp.create_app()
+
+        # Add HTTP /health endpoint for frontend health checks
+        from fastapi import Response
+
+        @app.get("/health")
+        async def http_health_endpoint():
+            """HTTP health endpoint for frontend/monitoring."""
+            global _shared_context
+
+            if _shared_context and hasattr(_shared_context, "health_status"):
+                # Server is ready with health status
+                health_data = {
+                    "status": _shared_context.health_status.get("status", "unknown"),
+                    "api_service": _shared_context.health_status.get("api_service", False),
+                    "agents_service": _shared_context.health_status.get("agents_service", False),
+                    "uptime_seconds": time.time() - _shared_context.startup_time,
+                    "timestamp": datetime.now().isoformat(),
+                }
+                status_code = 200 if health_data["status"] == "healthy" else 503
+                return Response(
+                    content=json.dumps(health_data),
+                    media_type="application/json",
+                    status_code=status_code
+                )
+            else:
+                # Server starting up
+                return Response(
+                    content=json.dumps({
+                        "status": "starting",
+                        "message": "MCP server is initializing...",
+                        "timestamp": datetime.now().isoformat(),
+                    }),
+                    media_type="application/json",
+                    status_code=503
+                )
+
+        logger.info(f"✓ HTTP /health endpoint registered")
+
         mcp.run(transport="streamable-http")
 
     except Exception as e:
