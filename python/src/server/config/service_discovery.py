@@ -16,6 +16,7 @@ class Environment(Enum):
     """Deployment environment types"""
 
     DOCKER_COMPOSE = "docker_compose"
+    KUBERNETES = "kubernetes"
     LOCAL = "local"
 
 
@@ -74,6 +75,11 @@ class ServiceDiscovery:
     @staticmethod
     def _detect_environment() -> Environment:
         """Detect the current deployment environment"""
+        # Check for explicit Kubernetes mode (via ConfigMap)
+        service_discovery_mode = os.getenv("SERVICE_DISCOVERY_MODE", "").lower()
+        if service_discovery_mode == "kubernetes":
+            return Environment.KUBERNETES
+
         # Check for Docker environment
         if os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER"):
             return Environment.DOCKER_COMPOSE
@@ -104,7 +110,21 @@ class ServiceDiscovery:
                 f"Unknown service: {service}. Valid services are: {list(self.DEFAULT_PORTS.keys())}"
             )
 
-        if self.environment == Environment.DOCKER_COMPOSE:
+        if self.environment == Environment.KUBERNETES:
+            # Kubernetes mode - use full service URLs from ConfigMap
+            service_url_map = {
+                "api": os.getenv("API_SERVICE_URL"),
+                "mcp": os.getenv("MCP_SERVICE_URL"),
+                "agents": os.getenv("AGENTS_SERVICE_URL"),
+            }
+            url = service_url_map.get(service)
+            if not url:
+                raise ValueError(
+                    f"Kubernetes mode enabled but {service.upper()}_SERVICE_URL not set. "
+                    f"Please ensure API_SERVICE_URL, MCP_SERVICE_URL, and AGENTS_SERVICE_URL are configured."
+                )
+
+        elif self.environment == Environment.DOCKER_COMPOSE:
             # Docker Compose uses service names directly
             # Check for override via environment variable
             host = os.getenv(f"{service_name.upper().replace('-', '_')}_HOST", service_name)
@@ -176,6 +196,11 @@ class ServiceDiscovery:
             for service in self.SERVICE_NAMES.keys()
             if not service.startswith("archon-")  # Skip duplicates
         }
+
+    @property
+    def is_kubernetes(self) -> bool:
+        """Check if running in Kubernetes"""
+        return self.environment == Environment.KUBERNETES
 
     @property
     def is_docker(self) -> bool:
