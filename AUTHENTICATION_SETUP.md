@@ -15,34 +15,37 @@ Archon now supports user authentication using Supabase Auth. This allows you to:
 1. A Supabase project (create one at [supabase.com](https://supabase.com))
 2. Node.js and Python environment set up
 
-## Step 1: Configure Environment Variables
+## Step 1: Verify Environment Variables
 
-### Backend Configuration
-
-In your `.env` file, ensure you have:
+The authentication system uses the Supabase configuration already present in your root `.env` file:
 
 ```bash
-# Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key-here
+# Supabase Configuration (Backend)
+SUPABASE_URL=https://supabase.automatizase.com.br
+SUPABASE_SERVICE_KEY=eyJhbGc...  # Your service role key
+SUPABASE_ANON_KEY=eyJhbGc...     # Your anon/public key
 
-# Frontend Supabase Configuration
+# Frontend Supabase Configuration (automatically configured)
 VITE_SUPABASE_URL=${SUPABASE_URL}
-VITE_SUPABASE_ANON_KEY=your-anon-public-key-here
+VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
 ```
 
-### Getting Your Keys
+**Important Notes:**
+- The frontend uses `VITE_SUPABASE_ANON_KEY` (safe for client-side)
+- The backend uses `SUPABASE_SERVICE_KEY` (server-side only)
+- These variables are automatically loaded from the root `.env` file
+- The Vite config has been updated to read from the root directory
 
-1. Go to your Supabase Dashboard
-2. Navigate to **Settings** > **API**
-3. Copy the following:
-   - **Project URL** → `SUPABASE_URL` and `VITE_SUPABASE_URL`
-   - **anon (public)** key → `VITE_SUPABASE_ANON_KEY` (for frontend)
-   - **service_role (secret)** key → `SUPABASE_SERVICE_KEY` (for backend)
+## Step 2: Install Frontend Dependencies
 
-**Important:** The frontend uses the ANON key (safe for client-side), while the backend uses the SERVICE_ROLE key (server-side only).
+```bash
+cd archon-ui-main
+npm install
+```
 
-## Step 2: Enable Email Authentication in Supabase
+This will install the `@supabase/supabase-js` package required for authentication.
+
+## Step 3: Enable Email Authentication in Supabase
 
 1. Go to **Authentication** > **Providers** in your Supabase Dashboard
 2. Enable **Email** provider
@@ -51,7 +54,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key-here
    - Development: `http://localhost:3737/*`
    - Production: Your production URL
 
-## Step 3: Enable Authentication Middleware (Optional)
+## Step 4: Enable Authentication Middleware (Optional)
 
 By default, the authentication middleware is **disabled** to avoid breaking existing installations. To enable it:
 
@@ -68,7 +71,7 @@ When enabled, all API routes will require authentication except:
 - `/docs`, `/redoc`, `/openapi.json` - API documentation
 - `/api/auth/*` - Authentication endpoints
 
-## Step 4: Start the Application
+## Step 5: Start the Application
 
 ```bash
 # Frontend
@@ -80,7 +83,7 @@ cd python
 uv run python -m src.server.main
 ```
 
-## Step 5: Create Your First User
+## Step 6: Create Your First User
 
 1. Navigate to `http://localhost:3737/signup`
 2. Enter your email and password
