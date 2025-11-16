@@ -7,6 +7,8 @@ import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MCPPage } from './pages/MCPPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { LoginPage } from './pages/LoginPage';
+import { SignUpPage } from './pages/SignUpPage';
 import { MainLayout } from './components/layout/MainLayout';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './features/ui/components/ToastProvider';
@@ -18,21 +20,25 @@ import { ErrorBoundaryWithBugReport } from './components/bug-report/ErrorBoundar
 import { MigrationBanner } from './components/ui/MigrationBanner';
 import { serverHealthService } from './services/serverHealthService';
 import { useMigrationStatus } from './hooks/useMigrationStatus';
+import { AuthProvider } from './features/auth/context/AuthContext';
+import { ProtectedRoute } from './features/auth/components/ProtectedRoute';
 
 
 const AppRoutes = () => {
   const { projectsEnabled } = useSettings();
-  
+
   return (
     <Routes>
-      <Route path="/" element={<KnowledgeBasePage />} />
-      <Route path="/onboarding" element={<OnboardingPage />} />
-      <Route path="/settings" element={<SettingsPage />} />
-      <Route path="/mcp" element={<MCPPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/" element={<ProtectedRoute><KnowledgeBasePage /></ProtectedRoute>} />
+      <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/mcp" element={<ProtectedRoute><MCPPage /></ProtectedRoute>} />
       {projectsEnabled ? (
         <>
-          <Route path="/projects" element={<ProjectPage />} />
-          <Route path="/projects/:projectId" element={<ProjectPage />} />
+          <Route path="/projects" element={<ProtectedRoute><ProjectPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectPage /></ProtectedRoute>} />
         </>
       ) : (
         <Route path="/projects" element={<Navigate to="/" replace />} />
@@ -111,15 +117,17 @@ const AppContent = () => {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <ToastProvider>
-          <TooltipProvider>
-            <SettingsProvider>
-              <AppContent />
-            </SettingsProvider>
-          </TooltipProvider>
-        </ToastProvider>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <TooltipProvider>
+              <SettingsProvider>
+                <AppContent />
+              </SettingsProvider>
+            </TooltipProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </AuthProvider>
       {import.meta.env.VITE_SHOW_DEVTOOLS === 'true' && (
         <ReactQueryDevtools initialIsOpen={false} />
       )}

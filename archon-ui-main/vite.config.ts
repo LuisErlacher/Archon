@@ -9,8 +9,8 @@ import type { ConfigEnv, UserConfig } from 'vite';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }: ConfigEnv): UserConfig => {
-  // Load environment variables
-  const env = loadEnv(mode, process.cwd(), '');
+  // Load environment variables from root directory (parent of archon-ui-main)
+  const env = loadEnv(mode, path.resolve(__dirname, '..'), '');
   
   // Get host and port from environment variables or use defaults
   // For internal Docker communication, use the service name
@@ -24,6 +24,9 @@ export default defineConfig(({ mode }: ConfigEnv): UserConfig => {
   const port = process.env.ARCHON_SERVER_PORT || env.ARCHON_SERVER_PORT || '8181';
   
   return {
+    // CRITICAL: Tell Vite where to find .env files (parent directory)
+    envDir: path.resolve(__dirname, '..'),
+
     plugins: [
       react(),
       // Custom plugin to add test endpoint

@@ -19,6 +19,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api_routes.agent_chat_api import router as agent_chat_router
+from .api_routes.auth_api import router as auth_router
 from .api_routes.bug_report_api import router as bug_report_router
 from .api_routes.internal_api import router as internal_router
 from .api_routes.knowledge_api import router as knowledge_router
@@ -160,6 +161,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Authentication Middleware (OPTIONAL)
+# Uncomment the lines below to enable JWT authentication on all routes except public paths
+# from .middleware.auth_middleware import AuthMiddleware
+# app.add_middleware(AuthMiddleware)
+
 
 # Add middleware to skip logging for health checks
 @app.middleware("http")
@@ -179,6 +185,7 @@ async def skip_health_check_logs(request, call_next):
 
 
 # Include API routers
+app.include_router(auth_router)
 app.include_router(settings_router)
 app.include_router(mcp_router)
 # app.include_router(mcp_client_router)  # Removed - not part of new architecture
