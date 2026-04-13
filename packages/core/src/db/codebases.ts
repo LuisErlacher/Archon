@@ -180,6 +180,7 @@ export async function listCodebases(): Promise<readonly Codebase[]> {
   return result.rows;
 }
 
+/** Returns only codebases the given user is a member of (via remote_agent_project_members). Admins use listCodebases(). */
 export async function listCodebasesForUser(userId: string): Promise<readonly Codebase[]> {
   const result = await pool.query<Codebase>(
     `SELECT c.* FROM remote_agent_codebases c

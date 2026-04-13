@@ -5,7 +5,7 @@
 ## Core Principles
 
 **Single-Developer Tool**
-- No multi-tenant complexity
+- Designed for a single operator; multi-user authentication is opt-in via `JWT_SECRET`
 
 **Platform Agnostic**
 - Unified conversation interface across Slack/Telegram/GitHub/cli/web
@@ -249,6 +249,10 @@ bun run cli serve
 bun run cli serve --port 4000
 bun run cli serve --download-only  # Download without starting
 
+# Log in to an Archon server (stores credentials to ~/.archon/auth.json)
+bun run cli login
+bun run cli login --server-url http://my-server:3090
+
 # Show version
 bun run cli version
 ```
@@ -375,7 +379,7 @@ import type { DagNode, WorkflowDefinition } from '@/lib/api';
 
 ### Database Schema
 
-**8 Tables (all prefixed with `remote_agent_`):**
+**10 Tables (all prefixed with `remote_agent_`):**
 1. **`codebases`** - Repository metadata and commands (JSONB)
 2. **`conversations`** - Track platform conversations with titles and soft-delete support
 3. **`sessions`** - Track AI SDK sessions with resume capability
@@ -384,6 +388,8 @@ import type { DagNode, WorkflowDefinition } from '@/lib/api';
 6. **`workflow_events`** - Step-level workflow event log (step transitions, artifacts, errors)
 7. **`messages`** - Conversation message history with tool call metadata (JSONB)
 8. **`codebase_env_vars`** - Per-project env vars injected into Claude SDK subprocess env (managed via Web UI or `env:` in config)
+9. **`users`** - User accounts for JWT authentication (username, password hash, role: admin|user)
+10. **`project_members`** - Junction table: user-codebase access grants (roles: owner, member)
 
 **Key Patterns:**
 - Conversation ID format: Platform-specific (`thread_ts`, `chat_id`, `user/repo#123`)

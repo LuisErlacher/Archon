@@ -59,7 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           /* best-effort */
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        // Expected on token expiry; unexpected on server errors — log for diagnostics
+        console.warn('[AuthContext] Session restore failed:', err);
         clearTokens();
       })
       .finally(() => {
@@ -74,7 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       .then(u => {
         setUser(u);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        console.warn('[AuthContext] Failed to fetch user profile:', err);
         clearTokens();
       });
   }, [accessToken]);

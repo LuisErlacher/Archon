@@ -4,15 +4,15 @@
 --
 -- 10 Tables:
 --   1. remote_agent_codebases
---   1b. remote_agent_codebase_env_vars
---   2. remote_agent_conversations
---   3. remote_agent_sessions
---   4. remote_agent_isolation_environments
---   5. remote_agent_workflow_runs
---   6. remote_agent_workflow_events
---   7. remote_agent_messages
---   8. remote_agent_users
---   9. remote_agent_project_members
+--   2. remote_agent_codebase_env_vars
+--   3. remote_agent_users
+--   4. remote_agent_project_members
+--   5. remote_agent_conversations
+--   6. remote_agent_sessions
+--   7. remote_agent_isolation_environments
+--   8. remote_agent_workflow_runs
+--   9. remote_agent_workflow_events
+--  10. remote_agent_messages
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -42,7 +42,7 @@ COMMENT ON TABLE remote_agent_codebases IS
   'Repository metadata: name, URL, working directory, AI assistant type, and command paths (JSONB)';
 
 -- ============================================================================
--- Table 1b: Codebase Env Vars
+-- Table 2: Codebase Env Vars
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_codebase_env_vars (
@@ -62,7 +62,41 @@ COMMENT ON TABLE remote_agent_codebase_env_vars IS
   'Per-project env vars merged into Options.env on Claude SDK calls. Managed via Web UI or config.';
 
 -- ============================================================================
--- Table 2: Conversations
+-- Table 3: Users  (must precede conversations — FK dependency)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS remote_agent_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  display_name VARCHAR(100),
+  role VARCHAR(20) NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+COMMENT ON TABLE remote_agent_users IS
+  'User accounts for authentication. First registered user gets admin role.';
+
+-- ============================================================================
+-- Table 4: Project Members  (must precede conversations — referenced in future queries)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS remote_agent_project_members (
+  user_id UUID NOT NULL REFERENCES remote_agent_users(id) ON DELETE CASCADE,
+  codebase_id UUID NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL DEFAULT 'member',
+  PRIMARY KEY (user_id, codebase_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_members_user_id
+  ON remote_agent_project_members(user_id);
+
+COMMENT ON TABLE remote_agent_project_members IS
+  'Junction table: which users have access to which codebases. Roles: owner, member.';
+
+-- ============================================================================
+-- Table 5: Conversations  (now safe — remote_agent_users exists)
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_conversations (
@@ -96,7 +130,7 @@ COMMENT ON COLUMN remote_agent_conversations.isolation_env_id IS
   'UUID reference to isolation_environments table (the only isolation reference)';
 
 -- ============================================================================
--- Table 3: Sessions
+-- Table 6: Sessions
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_sessions (
@@ -131,7 +165,7 @@ COMMENT ON COLUMN remote_agent_sessions.ended_reason IS
   'Why this session was deactivated: reset-requested, cwd-changed, conversation-closed, etc.';
 
 -- ============================================================================
--- Table 4: Isolation Environments
+-- Table 7: Isolation Environments
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_isolation_environments (
@@ -185,7 +219,7 @@ COMMENT ON COLUMN remote_agent_isolation_environments.workflow_id IS
   'Identifier for the work (issue number, PR number, thread hash, etc.)';
 
 -- ============================================================================
--- Table 5: Workflow Runs
+-- Table 8: Workflow Runs
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_workflow_runs (
@@ -220,7 +254,7 @@ COMMENT ON TABLE remote_agent_workflow_runs IS
   'Tracks workflow execution state for resumption and observability';
 
 -- ============================================================================
--- Table 6: Workflow Events
+-- Table 9: Workflow Events
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (
@@ -242,7 +276,7 @@ COMMENT ON TABLE remote_agent_workflow_events IS
   'Lean UI-relevant workflow events for observability (step transitions, artifacts, errors)';
 
 -- ============================================================================
--- Table 7: Messages
+-- Table 10: Messages
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS remote_agent_messages (
@@ -256,40 +290,6 @@ CREATE TABLE IF NOT EXISTS remote_agent_messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
   ON remote_agent_messages(conversation_id, created_at ASC);
-
--- ============================================================================
--- Table 8: Users
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS remote_agent_users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username VARCHAR(50) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  display_name VARCHAR(100),
-  role VARCHAR(20) NOT NULL DEFAULT 'user',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-COMMENT ON TABLE remote_agent_users IS
-  'User accounts for authentication. First registered user gets admin role.';
-
--- ============================================================================
--- Table 9: Project Members
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS remote_agent_project_members (
-  user_id UUID NOT NULL REFERENCES remote_agent_users(id) ON DELETE CASCADE,
-  codebase_id UUID NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
-  role VARCHAR(20) NOT NULL DEFAULT 'member',
-  PRIMARY KEY (user_id, codebase_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_project_members_user_id
-  ON remote_agent_project_members(user_id);
-
-COMMENT ON TABLE remote_agent_project_members IS
-  'Junction table: which users have access to which codebases. Roles: owner, member.';
 
 -- ============================================================================
 -- Cleanup: Drop legacy objects from older schemas

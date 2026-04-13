@@ -130,7 +130,8 @@ export async function registerApi(
 }
 
 export async function refreshSession(refreshToken: string): Promise<RefreshTokenResponse> {
-  // Don't use fetchJSON — we need to send without the current (expired) access token
+  // Use raw fetch rather than fetchJSON to avoid accidentally injecting a stale
+  // in-memory access token into the refresh request via fetchJSON's auto-inject logic.
   const res = await fetch('/api/auth/refresh', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

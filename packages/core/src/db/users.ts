@@ -51,34 +51,34 @@ export async function countUsers(): Promise<number> {
 }
 
 export async function createProjectMember(
-  user_id: string,
-  codebase_id: string,
+  userId: string,
+  codebaseId: string,
   role: 'owner' | 'member'
 ): Promise<ProjectMember> {
   const result = await pool.query<ProjectMember>(
     `INSERT INTO remote_agent_project_members (user_id, codebase_id, role)
      VALUES ($1, $2, $3) RETURNING *`,
-    [user_id, codebase_id, role]
+    [userId, codebaseId, role]
   );
   if (!result.rows[0]) {
     throw new Error('Failed to create project member: INSERT succeeded but no row returned');
   }
-  getLog().info({ user_id, codebase_id, role }, 'project_member.create_completed');
+  getLog().info({ userId, codebaseId, role }, 'project_member.create_completed');
   return result.rows[0];
 }
 
-export async function getUserCodebaseIds(user_id: string): Promise<string[]> {
+export async function getUserCodebaseIds(userId: string): Promise<string[]> {
   const result = await pool.query<{ codebase_id: string }>(
     'SELECT codebase_id FROM remote_agent_project_members WHERE user_id = $1',
-    [user_id]
+    [userId]
   );
   return result.rows.map(r => r.codebase_id);
 }
 
-export async function isMember(user_id: string, codebase_id: string): Promise<boolean> {
+export async function isMember(userId: string, codebaseId: string): Promise<boolean> {
   const result = await pool.query<{ count: string | number }>(
     'SELECT COUNT(*) as count FROM remote_agent_project_members WHERE user_id = $1 AND codebase_id = $2',
-    [user_id, codebase_id]
+    [userId, codebaseId]
   );
   return Number(result.rows[0]?.count ?? 0) > 0;
 }

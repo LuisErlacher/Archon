@@ -286,7 +286,26 @@ export class SqliteAdapter implements IDatabase {
         UNIQUE(codebase_id, key)
       );
 
-      -- Conversations table
+      -- Users table (must precede conversations — FK dependency)
+      CREATE TABLE IF NOT EXISTS remote_agent_users (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        display_name TEXT,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      -- Project members table (must precede conversations for logical ordering)
+      CREATE TABLE IF NOT EXISTS remote_agent_project_members (
+        user_id TEXT NOT NULL REFERENCES remote_agent_users(id) ON DELETE CASCADE,
+        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'member',
+        PRIMARY KEY (user_id, codebase_id)
+      );
+
+      -- Conversations table (now safe — remote_agent_users exists)
       CREATE TABLE IF NOT EXISTS remote_agent_conversations (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         platform_type TEXT NOT NULL,
@@ -369,25 +388,6 @@ export class SqliteAdapter implements IDatabase {
         step_name TEXT,
         data TEXT DEFAULT '{}',
         created_at TEXT DEFAULT (datetime('now'))
-      );
-
-      -- Users table
-      CREATE TABLE IF NOT EXISTS remote_agent_users (
-        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        display_name TEXT,
-        role TEXT NOT NULL DEFAULT 'user',
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
-
-      -- Project members table
-      CREATE TABLE IF NOT EXISTS remote_agent_project_members (
-        user_id TEXT NOT NULL REFERENCES remote_agent_users(id) ON DELETE CASCADE,
-        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
-        role TEXT NOT NULL DEFAULT 'member',
-        PRIMARY KEY (user_id, codebase_id)
       );
 
       -- Messages table (conversation history for Web UI)

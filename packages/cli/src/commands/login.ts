@@ -19,6 +19,21 @@ async function readLine(prompt: string): Promise<string> {
   });
 }
 
+async function readPassword(prompt: string): Promise<string> {
+  process.stdout.write(prompt);
+  // output: undefined with terminal: false suppresses echo so the password is not shown in the terminal.
+  // We avoid `output: null` due to TypeScript type constraints, but setting terminal to false
+  // prevents readline from writing input characters back to stdout.
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+  return new Promise(resolve => {
+    rl.question('', answer => {
+      rl.close();
+      process.stdout.write('\n'); // advance to next line after silent entry
+      resolve(answer);
+    });
+  });
+}
+
 export interface LoginOptions {
   serverUrl?: string;
 }
@@ -27,7 +42,7 @@ export async function loginCommand(opts: LoginOptions): Promise<number> {
   const serverUrl = opts.serverUrl ?? process.env.ARCHON_SERVER_URL ?? 'http://localhost:3090';
 
   const username = await readLine('Username: ');
-  const password = await readLine('Password: ');
+  const password = await readPassword('Password: ');
 
   try {
     const res = await fetch(`${serverUrl}/api/auth/login`, {

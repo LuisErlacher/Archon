@@ -32,7 +32,29 @@ You can feed this into tools like Swagger UI or use it to generate typed API cli
 
 ## Authentication
 
-None. Archon is a single-developer tool -- there is no authentication on the API by default. If you expose Archon on a network, use a reverse proxy or firewall to restrict access.
+Archon supports optional JWT-based authentication. Set `JWT_SECRET` in your environment to enable it.
+
+When `JWT_SECRET` is set, all `/api/*` endpoints (except `/api/auth/login`, `/api/auth/register`,
+`/api/auth/refresh`, `/api/health`, `/api/health/db`, and `/api/openapi.json`) require a `Bearer` token in the
+`Authorization` header. SSE streaming endpoints (`/api/stream/*`) are currently exempt pending a follow-up.
+
+When `JWT_SECRET` is **not** set (default), all endpoints are accessible without authentication —
+backward-compatible default for single-developer local use. In this mode every caller is treated as admin.
+
+### Auth Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/register` | Create a new user account (first user gets `admin` role) |
+| POST | `/api/auth/login` | Log in; returns `accessToken` (1h) and `refreshToken` (7d) |
+| POST | `/api/auth/refresh` | Exchange a refresh token for a new access token |
+| GET  | `/api/auth/me` | Return the currently authenticated user |
+
+Include the token in all subsequent requests:
+
+```bash
+curl -H "Authorization: Bearer <accessToken>" http://localhost:3090/api/conversations
+```
 
 ---
 

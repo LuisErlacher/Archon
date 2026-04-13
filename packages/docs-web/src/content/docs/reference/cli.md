@@ -50,7 +50,7 @@ archon workflow run plan --cwd /path/to/repo --branch feature-auth "Add OAuth su
 archon workflow run assist --cwd /path/to/repo --no-worktree "Quick question"
 ```
 
-**Note:** Workflow and isolation commands require running from within a git repository. Running from subdirectories automatically resolves to the repo root. The `version`, `help`, `chat`, `setup`, and `serve` commands work anywhere.
+**Note:** Workflow and isolation commands require running from within a git repository. Running from subdirectories automatically resolves to the repo root. The `version`, `help`, `chat`, `setup`, `serve`, and `login` commands work anywhere.
 
 ## Commands
 
@@ -302,6 +302,27 @@ archon complete feature-auth --force  # bypass uncommitted-changes check
 | `--force` | Skip uncommitted-changes guard |
 
 Use this after a PR is merged and you no longer need the worktree or branches. Accepts multiple branch names in one call.
+
+### `login`
+
+Authenticate against an Archon server and save credentials locally. Required when `JWT_SECRET` is configured on the server.
+
+```bash
+archon login
+archon login --server-url http://my-server:3090
+```
+
+Prompts for username and password, calls `/api/auth/login`, and writes the access token,
+refresh token, username, and server URL to `~/.archon/auth.json` (mode `0600`).
+
+**Flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--server-url <url>` | Override server URL (default: `ARCHON_SERVER_URL` env var or `http://localhost:3090`) |
+
+**Note:** The CLI does not currently auto-refresh expired tokens. Re-run `archon login` when
+your access token expires (default lifetime: 1 hour).
 
 ### `serve`
 

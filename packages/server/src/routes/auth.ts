@@ -10,6 +10,7 @@ import {
 } from '@archon/core/auth';
 import type { User } from '@archon/core';
 import { createLogger } from '@archon/paths';
+import { getValidatedBody } from './utils';
 import { errorSchema } from './schemas/common.schemas';
 import {
   registerBodySchema,
@@ -130,17 +131,19 @@ export function registerAuthRoutes(app: OpenAPIHono): void {
   // POST /api/auth/register
   registerOpenApiRoute(registerRoute, async (c: Context) => {
     try {
-      const body = (
-        c.req as unknown as {
-          valid(k: 'json'): { username: string; password: string; displayName?: string };
-        }
-      ).valid('json');
+      const body = getValidatedBody<{ username: string; password: string; displayName?: string }>(
+        c
+      );
 
       const existing = await usersDb.getUserByUsername(body.username);
       if (existing) {
         return c.json({ error: 'Username already taken' }, 409);
       }
 
+      // NOTE: countUsers() + createUser() is non-atomic. Two simultaneous registrations
+      // on a fresh install could both see count=0 and both receive role:'admin'.
+      // Acceptable for a single-developer tool (YAGNI — no concurrent first-registration risk).
+      // If multi-tenant use is ever added, replace with a DB-level constraint.
       const userCount = await usersDb.countUsers();
       const role = userCount === 0 ? 'admin' : 'user';
 
@@ -169,9 +172,7 @@ export function registerAuthRoutes(app: OpenAPIHono): void {
   // POST /api/auth/login
   registerOpenApiRoute(loginRoute, async (c: Context) => {
     try {
-      const body = (
-        c.req as unknown as { valid(k: 'json'): { username: string; password: string } }
-      ).valid('json');
+      const body = getValidatedBody<{ username: string; password: string }>(c);
 
       getLog().info({ username: body.username }, 'auth.login_started');
 
@@ -202,9 +203,7 @@ export function registerAuthRoutes(app: OpenAPIHono): void {
   // POST /api/auth/refresh
   registerOpenApiRoute(refreshRoute, async (c: Context) => {
     try {
-      const body = (c.req as unknown as { valid(k: 'json'): { refreshToken: string } }).valid(
-        'json'
-      );
+      const body = getValidatedBody<{ refreshToken: string }>(c);
 
       let payload;
       try {
@@ -224,6 +223,7 @@ export function registerAuthRoutes(app: OpenAPIHono): void {
         generateRefreshToken(tokenPayload),
       ]);
 
+      getLog().info({ userId: user.id }, 'auth.refresh_completed');
       return c.json({ accessToken, refreshToken });
     } catch (error) {
       getLog().error({ err: error }, 'auth.refresh_failed');

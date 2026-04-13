@@ -108,6 +108,8 @@ mock.module('@archon/git', () => ({
 mock.module('@archon/core/db/conversations', () => ({
   findConversationByPlatformId: mock(async () => null),
   listConversations: mock(async () => []),
+  listConversationsForUser: mock(async () => []),
+  setConversationUserId: mock(async () => {}),
   getOrCreateConversation: mock(async () => ({
     id: 'internal-uuid-123',
     platform_conversation_id: 'web-test-abc',
@@ -117,6 +119,7 @@ mock.module('@archon/core/db/conversations', () => ({
     platform_type: 'web',
     deleted_at: null,
     codebase_id: null,
+    user_id: null,
   })),
   softDeleteConversation: mock(async () => {}),
   updateConversationTitle: mock(async () => {}),
@@ -126,9 +129,18 @@ mock.module('@archon/core/db/conversations', () => ({
 const mockUpdateCodebaseAllowEnvKeys = mock(async (_id: string, _v: boolean) => {});
 mock.module('@archon/core/db/codebases', () => ({
   listCodebases: mockListCodebases,
+  listCodebasesForUser: mock(async () => []),
   getCodebase: mockGetCodebase,
   deleteCodebase: mockDeleteCodebase,
   updateCodebaseAllowEnvKeys: mockUpdateCodebaseAllowEnvKeys,
+}));
+
+mock.module('@archon/core/db/users', () => ({
+  createProjectMember: mock(async () => ({
+    user_id: 'user-1',
+    codebase_id: 'codebase-1',
+    role: 'owner',
+  })),
 }));
 
 mock.module('@archon/core/db/isolation-environments', () => ({

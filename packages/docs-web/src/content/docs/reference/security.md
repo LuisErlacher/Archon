@@ -89,7 +89,7 @@ Each platform adapter supports an optional user whitelist via environment variab
 - Every incoming message or webhook is checked before processing.
 - Unauthorized users are silently rejected -- no error response is sent back.
 - Unauthorized attempts are logged with masked user identifiers for auditing.
-- The Web UI has no built-in user authentication. Use `CADDY_BASIC_AUTH` or form auth when exposing it publicly (see [Docker / Deployment](/reference/configuration/#docker--deployment) variables).
+- When `JWT_SECRET` is set, the Web UI requires users to log in via the built-in `/login` page before accessing any protected routes. When `JWT_SECRET` is not set (default), the server operates in open-access mode — suitable for local single-developer use only. For network-exposed deployments, always set `JWT_SECRET`. You can additionally use `CADDY_BASIC_AUTH` or form auth for deployments without `JWT_SECRET` (see [Docker / Deployment](/reference/configuration/#docker--deployment) variables).
 
 ## Webhook Security
 

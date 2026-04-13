@@ -19,6 +19,7 @@ Set these in your shell or `.env` file:
 | `CLAUDE_API_KEY` | No | Anthropic API key for pay-per-use (alternative to global auth) |
 | `CODEX_ACCESS_TOKEN` | Yes (for Codex) | Codex access token (see [AI Assistants](/getting-started/ai-assistants/)) |
 | `DATABASE_URL` | No | PostgreSQL connection string (default: SQLite) |
+| `JWT_SECRET` | No | Secret key for JWT signing (min 32 chars). Set to enable authentication. Generate with `openssl rand -base64 32`. |
 | `LOG_LEVEL` | No | `debug`, `info` (default), `warn`, `error` |
 | `PORT` | No | Server port (default: 3090, Docker: 3000) |
 

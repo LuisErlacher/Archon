@@ -14,10 +14,11 @@ const PUBLIC_PATHS = new Set([
 ]);
 
 const PUBLIC_PREFIXES = [
+  // Webhooks: authenticated via HMAC signature (not JWT)
   '/webhooks/',
-  // SSE streaming — clients cannot set Authorization headers easily.
-  // Web UI access token is still required for all other endpoints.
-  // TODO: Add SSE auth via query param token in a follow-up.
+  // SSE streaming: bypassed entirely — EventSource cannot send custom headers.
+  // KNOWN GAP: any caller knowing a conversationId can subscribe without a token.
+  // TODO: Add token-in-query-param auth for SSE in a follow-up.
   '/api/stream/',
 ];
 
@@ -41,8 +42,14 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
     c.set('userId', payload.userId);
     c.set('userRole', payload.role);
     await next();
-  } catch {
-    log.debug({ path }, 'auth.token_invalid');
+  } catch (e) {
+    const err = e as Error;
+    // Misconfiguration (JWT_SECRET missing) must be visible at warn level to aid diagnosis
+    if (err.message?.includes('JWT_SECRET')) {
+      log.warn({ err, path }, 'auth.jwt_secret_missing');
+    } else {
+      log.debug({ path, errorType: err.constructor?.name }, 'auth.token_invalid');
+    }
     c.res = c.json({ error: 'Unauthorized' }, 401);
   }
 }
