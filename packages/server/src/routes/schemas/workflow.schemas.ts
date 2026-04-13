@@ -142,15 +142,18 @@ export const workflowRunByWorkerResponseSchema = z
   .object({ run: workflowRunSchema })
   .openapi('WorkflowRunByWorkerResponse');
 
+/** Shared base for all action responses that return { success, message }. */
+const actionResponseBaseSchema = z.object({ success: z.boolean(), message: z.string() });
+
 /** POST /api/workflows/runs/:runId/cancel response. */
-export const cancelWorkflowRunResponseSchema = z
-  .object({ success: z.boolean(), message: z.string() })
-  .openapi('CancelWorkflowRunResponse');
+export const cancelWorkflowRunResponseSchema = actionResponseBaseSchema.openapi(
+  'CancelWorkflowRunResponse'
+);
 
 /** Generic workflow run action response (resume, abandon, delete). */
-export const workflowRunActionResponseSchema = z
-  .object({ success: z.boolean(), message: z.string() })
-  .openapi('WorkflowRunActionResponse');
+export const workflowRunActionResponseSchema = actionResponseBaseSchema.openapi(
+  'WorkflowRunActionResponse'
+);
 
 /** POST /api/workflows/runs/:runId/approve request body. */
 export const approveWorkflowRunBodySchema = z
@@ -241,3 +244,38 @@ export const importWorkflowResponseSchema = z
     source: workflowSourceSchema,
   })
   .openapi('ImportWorkflowResponse');
+
+// =========================================================================
+// Quality gate schemas
+// =========================================================================
+
+/** GET /api/workflows/runs/:runId/summary response. */
+export const workflowRunSummarySchema = z
+  .object({
+    id: z.string(),
+    workflow_name: z.string(),
+    status: workflowRunStatusSchema,
+    started_at: z.string(),
+    completed_at: z.string().nullable(),
+    last_activity_at: z.string().nullable(),
+    nodes_completed: z.number(),
+    nodes_failed: z.number(),
+    nodes_total: z.number().nullable(),
+  })
+  .openapi('WorkflowRunSummary');
+
+/** POST /api/workflows/runs/:runId/nodes/:nodeId/complete request body. */
+export const nodeCompleteBodySchema = z
+  .object({ output: z.string().optional() })
+  .openapi('NodeCompleteBody');
+
+/** POST /api/workflows/runs/:runId/nodes/:nodeId/gate-result request body. */
+export const nodeGateResultBodySchema = z
+  .object({
+    passed: z.boolean(),
+    reason: z.string().optional(),
+  })
+  .openapi('NodeGateResultBody');
+
+/** Generic node action response (node complete, gate result). */
+export const nodeActionResponseSchema = actionResponseBaseSchema.openapi('NodeActionResponse');

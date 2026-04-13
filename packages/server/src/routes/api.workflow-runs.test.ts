@@ -1362,3 +1362,188 @@ describe('POST /api/workflows/runs/:runId/reject', () => {
     expect(mockUpdateWorkflowRun).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /api/workflows/runs/:runId/summary', () => {
+  beforeEach(() => {
+    mockGetWorkflowRun.mockClear();
+    mockListWorkflowEvents.mockClear();
+  });
+
+  test('returns 404 when run not found', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(null);
+    const res = await app.request('/api/workflows/runs/missing/summary');
+    expect(res.status).toBe(404);
+  });
+
+  test('returns summary with derived node counts', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_RUNNING_RUN);
+    mockListWorkflowEvents.mockResolvedValueOnce([
+      { ...MOCK_EVENTS[0], event_type: 'node_completed' },
+      { ...MOCK_EVENTS[1], event_type: 'node_completed' },
+      { ...MOCK_EVENTS[2], event_type: 'node_failed' },
+    ]);
+    const res = await app.request('/api/workflows/runs/run-uuid-1/summary');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.id).toBe('run-uuid-1');
+    expect(body.nodes_completed).toBe(2);
+    expect(body.nodes_failed).toBe(1);
+    expect(body.nodes_total).toBeNull();
+  });
+});
+
+describe('POST /api/workflows/runs/:runId/nodes/:nodeId/complete', () => {
+  beforeEach(() => {
+    mockGetWorkflowRun.mockReset();
+    mockCreateWorkflowEvent.mockReset();
+  });
+
+  test('returns 404 when run not found', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(null);
+    const res = await app.request('/api/workflows/runs/missing/nodes/build/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test('returns 400 when run is not running', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_COMPLETED_RUN);
+    const res = await app.request('/api/workflows/runs/run-uuid-2/nodes/build/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('creates node_completed event and emits SSE', async () => {
+    const { app, mockWebAdapter } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_RUNNING_RUN);
+    const res = await app.request('/api/workflows/runs/run-uuid-1/nodes/build/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ output: 'build artifacts ready' }),
+    });
+    expect(res.status).toBe(200);
+    expect(mockCreateWorkflowEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow_run_id: 'run-uuid-1',
+        event_type: 'node_completed',
+        step_name: 'build',
+        data: { node_output: 'build artifacts ready' },
+      })
+    );
+    expect(mockWebAdapter.emitSSE).toHaveBeenCalledWith(
+      'conv-uuid-1',
+      expect.stringContaining('"type":"node_completed"')
+    );
+  });
+
+  test('does not emit SSE when run has no conversation_id', async () => {
+    const { app, mockWebAdapter } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce({ ...MOCK_RUNNING_RUN, conversation_id: null });
+    const res = await app.request('/api/workflows/runs/run-uuid-1/nodes/build/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ output: 'done' }),
+    });
+    expect(res.status).toBe(200);
+    expect(mockWebAdapter.emitSSE).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/workflows/runs/:runId/nodes/:nodeId/gate-result', () => {
+  beforeEach(() => {
+    mockGetWorkflowRun.mockReset();
+    mockCreateWorkflowEvent.mockReset();
+  });
+
+  test('returns 404 when run not found', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(null);
+    const res = await app.request('/api/workflows/runs/missing/nodes/quality-gate/gate-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed: true }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test('returns 400 when run is not running', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_COMPLETED_RUN);
+    const res = await app.request('/api/workflows/runs/run-uuid-2/nodes/quality-gate/gate-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed: true }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('creates node_completed event when gate passes', async () => {
+    const { app, mockWebAdapter } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_RUNNING_RUN);
+    const res = await app.request('/api/workflows/runs/run-uuid-1/nodes/quality-gate/gate-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed: true, reason: 'All checks green' }),
+    });
+    expect(res.status).toBe(200);
+    expect(mockCreateWorkflowEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'node_completed',
+        data: expect.objectContaining({ gate_passed: true }),
+      })
+    );
+    expect(mockWebAdapter.emitSSE).toHaveBeenCalledWith(
+      'conv-uuid-1',
+      expect.stringContaining('"passed":true')
+    );
+  });
+
+  test('creates node_failed event when gate fails', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_RUNNING_RUN);
+    const res = await app.request('/api/workflows/runs/run-uuid-1/nodes/quality-gate/gate-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed: false, reason: 'Coverage below threshold' }),
+    });
+    expect(res.status).toBe(200);
+    expect(mockCreateWorkflowEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'node_failed',
+        data: expect.objectContaining({ gate_passed: false }),
+      })
+    );
+  });
+
+  test('returns 400 when body is missing required passed field', async () => {
+    const { app } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce(MOCK_RUNNING_RUN);
+    const res = await app.request('/api/workflows/runs/run-uuid-1/nodes/quality-gate/gate-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'missing passed field' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('does not emit SSE when run has no conversation_id', async () => {
+    const { app, mockWebAdapter } = makeApp();
+    mockGetWorkflowRun.mockResolvedValueOnce({ ...MOCK_RUNNING_RUN, conversation_id: null });
+    const res = await app.request('/api/workflows/runs/run-uuid-1/nodes/quality-gate/gate-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(mockWebAdapter.emitSSE).not.toHaveBeenCalled();
+  });
+});
