@@ -284,11 +284,15 @@ describe('PiAiClient', () => {
         await capturedListener?.({ type: 'agent_end', messages: [] }, signal);
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _chunk of client.sendQuery('test', '/tmp', undefined, {
-        abortSignal: abortController.signal,
-      })) {
-        // consume
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        for await (const _chunk of client.sendQuery('test', '/tmp', undefined, {
+          abortSignal: abortController.signal,
+        })) {
+          // consume
+        }
+      } catch {
+        // Expected: queue.fail() throws 'Query aborted' when abort signal fires
       }
 
       expect(mockAbortFn).toHaveBeenCalled();
