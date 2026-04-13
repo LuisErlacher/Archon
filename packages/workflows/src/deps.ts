@@ -139,6 +139,11 @@ export interface WorkflowAssistantOptions {
    * Claude only — ignored for Codex (Codex SDK does not expose env injection).
    */
   env?: Record<string, string>;
+  /**
+   * LLM provider for pi-ai (e.g., 'anthropic', 'openai', 'google').
+   * Pi-ai only — ignored for Claude and Codex.
+   */
+  piAiProvider?: string;
   abortSignal?: AbortSignal;
   /**
    * When false (default), skips writing session transcript to ~/.claude/projects/.
@@ -226,7 +231,9 @@ export interface IWorkflowAssistantClient {
   getType(): string;
 }
 
-export type AssistantClientFactory = (provider: 'claude' | 'codex') => IWorkflowAssistantClient;
+export type AssistantClientFactory = (
+  provider: 'claude' | 'codex' | 'pi-ai'
+) => IWorkflowAssistantClient;
 
 // ---------------------------------------------------------------------------
 // Narrow config interface (subset of MergedConfig)
@@ -237,8 +244,8 @@ export type AssistantClientFactory = (provider: 'claude' | 'codex') => IWorkflow
 // ---------------------------------------------------------------------------
 
 export interface WorkflowConfig {
-  /** Default assistant provider ('claude' | 'codex') */
-  assistant: 'claude' | 'codex';
+  /** Default assistant provider ('claude' | 'codex' | 'pi-ai') */
+  assistant: 'claude' | 'codex' | 'pi-ai';
   baseBranch?: string;
   docsPath?: string;
   /**
@@ -262,6 +269,11 @@ export interface WorkflowConfig {
       modelReasoningEffort?: ModelReasoningEffort;
       webSearchMode?: WebSearchMode;
       additionalDirectories?: string[];
+    };
+    pi?: {
+      model?: string;
+      /** LLM provider for pi-ai (e.g., 'anthropic', 'openai', 'google'). */
+      provider?: string;
     };
   };
 }

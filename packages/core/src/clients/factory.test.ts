@@ -19,21 +19,29 @@ describe('factory', () => {
       expect(typeof client.sendQuery).toBe('function');
     });
 
+    test('returns PiAiClient for pi-ai type', () => {
+      const client = getAssistantClient('pi-ai');
+
+      expect(client).toBeDefined();
+      expect(client.getType()).toBe('pi-ai');
+      expect(typeof client.sendQuery).toBe('function');
+    });
+
     test('throws error for unknown type', () => {
       expect(() => getAssistantClient('unknown')).toThrow(
-        "Unknown assistant type: unknown. Supported types: 'claude', 'codex'"
+        "Unknown assistant type: unknown. Supported types: 'claude', 'codex', 'pi-ai'"
       );
     });
 
     test('throws error for empty string', () => {
       expect(() => getAssistantClient('')).toThrow(
-        "Unknown assistant type: . Supported types: 'claude', 'codex'"
+        "Unknown assistant type: . Supported types: 'claude', 'codex', 'pi-ai'"
       );
     });
 
     test('is case sensitive - Claude throws', () => {
       expect(() => getAssistantClient('Claude')).toThrow(
-        "Unknown assistant type: Claude. Supported types: 'claude', 'codex'"
+        "Unknown assistant type: Claude. Supported types: 'claude', 'codex', 'pi-ai'"
       );
     });
 

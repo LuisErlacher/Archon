@@ -194,6 +194,7 @@ function getDefaults(): MergedConfig {
     assistants: {
       claude: {},
       codex: {},
+      pi: {},
     },
     streaming: {
       telegram: 'stream',
@@ -232,7 +233,7 @@ function applyEnvOverrides(config: MergedConfig): MergedConfig {
 
   // Assistant override
   const envAssistant = process.env.DEFAULT_AI_ASSISTANT;
-  if (envAssistant === 'claude' || envAssistant === 'codex') {
+  if (envAssistant === 'claude' || envAssistant === 'codex' || envAssistant === 'pi-ai') {
     config.assistant = envAssistant;
   }
 
@@ -277,6 +278,7 @@ function mergeGlobalConfig(defaults: MergedConfig, global: GlobalConfig): Merged
     assistants: {
       claude: { ...defaults.assistants.claude },
       codex: { ...defaults.assistants.codex },
+      pi: { ...defaults.assistants.pi },
     },
   };
 
@@ -300,6 +302,12 @@ function mergeGlobalConfig(defaults: MergedConfig, global: GlobalConfig): Merged
     result.assistants.codex = {
       ...result.assistants.codex,
       ...global.assistants.codex,
+    };
+  }
+  if (global.assistants?.pi) {
+    result.assistants.pi = {
+      ...result.assistants.pi,
+      ...global.assistants.pi,
     };
   }
 
@@ -339,6 +347,7 @@ function mergeRepoConfig(merged: MergedConfig, repo: RepoConfig): MergedConfig {
     assistants: {
       claude: { ...merged.assistants.claude },
       codex: { ...merged.assistants.codex },
+      pi: { ...merged.assistants.pi },
     },
   };
 
@@ -357,6 +366,12 @@ function mergeRepoConfig(merged: MergedConfig, repo: RepoConfig): MergedConfig {
     result.assistants.codex = {
       ...result.assistants.codex,
       ...repo.assistants.codex,
+    };
+  }
+  if (repo.assistants?.pi) {
+    result.assistants.pi = {
+      ...result.assistants.pi,
+      ...repo.assistants.pi,
     };
   }
 
@@ -528,6 +543,10 @@ export function toSafeConfig(config: MergedConfig): SafeConfig {
         model: config.assistants.codex.model,
         modelReasoningEffort: config.assistants.codex.modelReasoningEffort,
         webSearchMode: config.assistants.codex.webSearchMode,
+      },
+      pi: {
+        model: config.assistants.pi.model,
+        provider: config.assistants.pi.provider,
       },
     },
     streaming: {

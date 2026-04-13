@@ -362,7 +362,7 @@ function expandEnvVars(config: Record<string, unknown>): {
  */
 async function resolveNodeProviderAndModel(
   node: DagNode,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   config: WorkflowConfig,
   platform: IWorkflowPlatform,
@@ -371,11 +371,11 @@ async function resolveNodeProviderAndModel(
   cwd: string,
   workflowLevelOptions: WorkflowLevelOptions
 ): Promise<{
-  provider: 'claude' | 'codex';
+  provider: 'claude' | 'codex' | 'pi-ai';
   model: string | undefined;
   options: WorkflowAssistantOptions | undefined;
 }> {
-  let provider: 'claude' | 'codex';
+  let provider: 'claude' | 'codex' | 'pi-ai';
 
   if (node.provider) {
     provider = node.provider;
@@ -387,9 +387,14 @@ async function resolveNodeProviderAndModel(
     provider = workflowProvider;
   }
 
+  const nodeAssistantDefaults =
+    provider === 'claude'
+      ? config.assistants.claude
+      : provider === 'codex'
+        ? config.assistants.codex
+        : config.assistants.pi;
   const model =
-    node.model ??
-    (provider === workflowProvider ? workflowModel : config.assistants[provider]?.model);
+    node.model ?? (provider === workflowProvider ? workflowModel : nodeAssistantDefaults?.model);
 
   if (!isModelCompatible(provider, model)) {
     throw new Error(
@@ -486,7 +491,15 @@ async function resolveNodeProviderAndModel(
   }
 
   let options: WorkflowAssistantOptions | undefined;
-  if (provider === 'codex') {
+  if (provider === 'pi-ai') {
+    options = {
+      model,
+      piAiProvider: config.assistants.pi?.provider,
+    };
+    if (node.output_format) {
+      options.outputFormat = { type: 'json_schema', schema: node.output_format };
+    }
+  } else if (provider === 'codex') {
     options = {
       model,
       modelReasoningEffort: config.assistants.codex.modelReasoningEffort,
@@ -716,7 +729,7 @@ async function executeNodeInternal(
   cwd: string,
   workflowRun: WorkflowRun,
   node: CommandNode | PromptNode,
-  provider: 'claude' | 'codex',
+  provider: 'claude' | 'codex' | 'pi-ai',
   nodeOptions: WorkflowAssistantOptions | undefined,
   artifactsDir: string,
   logDir: string,
@@ -1667,10 +1680,18 @@ async function executeScriptNode(
  * Caller is responsible for resolving per-node overrides before passing model.
  */
 function buildLoopNodeOptions(
-  provider: 'claude' | 'codex',
+  provider: 'claude' | 'codex' | 'pi-ai',
   model: string | undefined,
   config: WorkflowConfig
 ): WorkflowAssistantOptions | undefined {
+  if (provider === 'pi-ai') {
+    const piOptions: WorkflowAssistantOptions = {
+      ...(model ? { model } : {}),
+      piAiProvider: config.assistants.pi?.provider,
+    };
+    return Object.keys(piOptions).length > 0 ? piOptions : undefined;
+  }
+
   const codexOptions =
     provider === 'codex'
       ? {
@@ -1704,7 +1725,7 @@ async function executeLoopNode(
   cwd: string,
   workflowRun: WorkflowRun,
   node: LoopNode,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   artifactsDir: string,
   logDir: string,
@@ -2192,7 +2213,7 @@ async function executeApprovalNode(
   deps: WorkflowDeps,
   platform: IWorkflowPlatform,
   conversationId: string,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   cwd: string,
   artifactsDir: string,
@@ -2362,7 +2383,7 @@ export async function executeDagWorkflow(
   cwd: string,
   workflow: { name: string; nodes: readonly DagNode[] } & WorkflowLevelOptions,
   workflowRun: WorkflowRun,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   artifactsDir: string,
   logDir: string,
@@ -2599,7 +2620,7 @@ export async function executeDagWorkflow(
           // 3b. Loop node dispatch — manages its own AI sessions and iteration
           if (isLoopNode(node)) {
             // Resolve per-node provider/model overrides (same logic as other node types)
-            let loopProvider: 'claude' | 'codex';
+            let loopProvider: 'claude' | 'codex' | 'pi-ai';
             if (node.provider) {
               loopProvider = node.provider;
             } else if (node.model && isClaudeModel(node.model)) {
@@ -2609,11 +2630,15 @@ export async function executeDagWorkflow(
             } else {
               loopProvider = workflowProvider;
             }
+            const loopAssistantDefaults =
+              loopProvider === 'claude'
+                ? config.assistants.claude
+                : loopProvider === 'codex'
+                  ? config.assistants.codex
+                  : config.assistants.pi;
             const loopModel =
               node.model ??
-              (loopProvider === workflowProvider
-                ? workflowModel
-                : config.assistants[loopProvider]?.model);
+              (loopProvider === workflowProvider ? workflowModel : loopAssistantDefaults?.model);
 
             if (!isModelCompatible(loopProvider, loopModel)) {
               return {
