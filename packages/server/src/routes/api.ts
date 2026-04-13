@@ -102,6 +102,7 @@ import {
   nodeActionResponseSchema,
   workflowEventsQuerySchema,
   workflowEventsResponseSchema,
+  timelineEntrySchema,
   workflowTimelineResponseSchema,
 } from './schemas/workflow.schemas';
 import {
@@ -2606,12 +2607,19 @@ export function registerApiRoutes(
         return apiError(c, 404, 'Workflow run not found');
       }
 
-      const limitStr = c.req.query('limit');
-      const offsetStr = c.req.query('offset');
-      const eventType = c.req.query('event_type');
-
-      const limit = Math.min(Math.max(Number(limitStr) || 50, 1), 200);
-      const offset = Math.max(Number(offsetStr) || 0, 0);
+      const queryResult = workflowEventsQuerySchema.safeParse({
+        limit: c.req.query('limit'),
+        offset: c.req.query('offset'),
+        event_type: c.req.query('event_type'),
+      });
+      if (!queryResult.success) {
+        return apiError(
+          c,
+          400,
+          `Invalid query parameters: ${queryResult.error.issues.map(i => i.message).join(', ')}`
+        );
+      }
+      const { limit, offset, event_type: eventType } = queryResult.data;
 
       const [events, total] = await Promise.all([
         workflowEventDb.listWorkflowEventsPaginated(runId, limit, offset, eventType),
@@ -2634,17 +2642,16 @@ export function registerApiRoutes(
         return apiError(c, 404, 'Workflow run not found');
       }
 
-      const events = await workflowEventDb.listWorkflowEvents(runId);
+      // Cap event loading to prevent unbounded memory usage on long-running workflows
+      const MAX_TIMELINE_EVENTS = 10_000;
+      const events = await workflowEventDb.listWorkflowEventsPaginated(
+        runId,
+        MAX_TIMELINE_EVENTS,
+        0
+      );
 
       // Build timeline from raw events
-      interface TimelineEntry {
-        timestamp: string;
-        node_id: string | null;
-        event: string;
-        duration_ms: number | null;
-        details: Record<string, unknown>;
-      }
-
+      type TimelineEntry = z.infer<typeof timelineEntrySchema>;
       const timeline: TimelineEntry[] = [];
       const nodeStartTimes = new Map<string, string>();
 

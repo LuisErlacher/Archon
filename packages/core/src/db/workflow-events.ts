@@ -158,15 +158,24 @@ export async function countWorkflowEvents(
   workflowRunId: string,
   eventType?: string
 ): Promise<number> {
-  const params: unknown[] = [workflowRunId];
-  let sql = 'SELECT COUNT(*) as count FROM remote_agent_workflow_events WHERE workflow_run_id = $1';
-  if (eventType) {
-    sql += ' AND event_type = $2';
-    params.push(eventType);
+  try {
+    const params: unknown[] = [workflowRunId];
+    let sql =
+      'SELECT COUNT(*) as count FROM remote_agent_workflow_events WHERE workflow_run_id = $1';
+    if (eventType) {
+      sql += ` AND event_type = $${params.length + 1}`;
+      params.push(eventType);
+    }
+    const result = await pool.query<{ count: number | string }>(sql, params);
+    // SQLite returns string, PostgreSQL returns number
+    return Number(result.rows[0]?.count ?? 0);
+  } catch (error) {
+    getLog().error(
+      { err: error as Error, runId: workflowRunId, eventType },
+      'db.workflow_events_count_failed'
+    );
+    throw new Error(`Failed to count workflow events: ${(error as Error).message}`);
   }
-  const result = await pool.query<{ count: number | string }>(sql, params);
-  // SQLite returns string, PostgreSQL returns number
-  return Number(result.rows[0]?.count ?? 0);
 }
 
 /**
@@ -178,18 +187,27 @@ export async function listWorkflowEventsPaginated(
   offset: number,
   eventType?: string
 ): Promise<WorkflowEventRow[]> {
-  const params: unknown[] = [workflowRunId];
-  let sql = 'SELECT * FROM remote_agent_workflow_events WHERE workflow_run_id = $1';
-  if (eventType) {
-    sql += ` AND event_type = $${params.length + 1}`;
-    params.push(eventType);
-  }
-  sql += ` ORDER BY created_at ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-  params.push(limit, offset);
+  try {
+    const params: unknown[] = [workflowRunId];
+    let sql = `SELECT id, workflow_run_id, event_type, step_index, step_name, data, created_at
+       FROM remote_agent_workflow_events WHERE workflow_run_id = $1`;
+    if (eventType) {
+      sql += ` AND event_type = $${params.length + 1}`;
+      params.push(eventType);
+    }
+    sql += ` ORDER BY created_at ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
 
-  const result = await pool.query<WorkflowEventRow>(sql, params);
-  return [...result.rows].map(row => ({
-    ...row,
-    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
-  }));
+    const result = await pool.query<WorkflowEventRow>(sql, params);
+    return [...result.rows].map(row => ({
+      ...row,
+      data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+    }));
+  } catch (error) {
+    getLog().error(
+      { err: error as Error, runId: workflowRunId, limit, offset, eventType },
+      'db.workflow_events_list_paginated_failed'
+    );
+    throw new Error(`Failed to list paginated workflow events: ${(error as Error).message}`);
+  }
 }

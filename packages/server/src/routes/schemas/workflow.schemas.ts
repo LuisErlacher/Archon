@@ -286,9 +286,9 @@ export const nodeActionResponseSchema = actionResponseBaseSchema.openapi('NodeAc
 
 /** GET /api/workflows/runs/:runId/events query params. */
 export const workflowEventsQuerySchema = z.object({
-  limit: z.string().optional(),
-  offset: z.string().optional(),
-  event_type: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  event_type: z.string().max(100).optional(),
 });
 
 /** GET /api/workflows/runs/:runId/events response. */
