@@ -58,7 +58,6 @@ import { MessagePersistence } from './adapters/web/persistence';
 import { SSETransport } from './adapters/web/transport';
 import { WorkflowEventBridge } from './adapters/web/workflow-bridge';
 import { registerApiRoutes } from './routes/api';
-import { registerAuthRoutes } from './routes/auth';
 import { authMiddleware } from './middleware/auth';
 import {
   handleMessage,
@@ -492,10 +491,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // Auth middleware (after CORS, before routes)
   app.use('/api/*', authMiddleware);
 
-  // Register auth routes first (login/register/refresh are public)
-  registerAuthRoutes(app);
-
-  // Register Web UI API routes
+  // Register Web UI API routes (includes auth routes inline)
   registerApiRoutes(app, webAdapter, lockManager);
 
   // GitHub webhook endpoint

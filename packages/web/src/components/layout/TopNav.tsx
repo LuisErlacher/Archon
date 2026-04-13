@@ -13,7 +13,7 @@ const tabs = [
 ] as const;
 
 export function TopNav(): React.ReactElement {
-  const { user, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
 
   const { data: runningRuns } = useQuery({
@@ -63,9 +63,8 @@ export function TopNav(): React.ReactElement {
         </NavLink>
       ))}
       <div className="ml-auto flex items-center gap-3">
-        {user && (
+        {isAuthenticated && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-text-secondary">{user.username}</span>
             <button
               type="button"
               onClick={() => {
