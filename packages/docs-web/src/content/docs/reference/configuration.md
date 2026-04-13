@@ -51,7 +51,7 @@ Create `~/.archon/config.yaml` for user-wide preferences:
 
 ```yaml
 # Default AI assistant
-defaultAssistant: claude # or 'codex'
+defaultAssistant: claude # or 'codex' or 'pi-ai'
 
 # Assistant defaults
 assistants:
@@ -66,6 +66,9 @@ assistants:
     webSearchMode: disabled
     additionalDirectories:
       - /absolute/path/to/other/repo
+  pi:
+    provider: anthropic  # LLM backend (e.g., 'anthropic', 'openai', 'google', 'mistral', 'groq', 'xai')
+    model: claude-3-5-sonnet-20241022  # Model ID for the selected provider
 
 # Streaming preferences per platform
 streaming:
@@ -187,7 +190,7 @@ Environment variables override all other configuration. They are organized by ca
 | `PORT` | HTTP server listen port | `3090` (auto-allocated in worktrees) |
 | `LOG_LEVEL` | Logging verbosity (`fatal`, `error`, `warn`, `info`, `debug`, `trace`) | `info` |
 | `BOT_DISPLAY_NAME` | Bot name shown in batch-mode "starting" messages | `Archon` |
-| `DEFAULT_AI_ASSISTANT` | Default AI assistant (`claude` or `codex`) | `claude` |
+| `DEFAULT_AI_ASSISTANT` | Default AI assistant (`claude`, `codex`, or `pi-ai`) | `claude` |
 | `MAX_CONCURRENT_CONVERSATIONS` | Maximum concurrent AI conversations | `10` |
 | `SESSION_RETENTION_DAYS` | Delete inactive sessions older than N days | `30` |
 

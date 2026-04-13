@@ -140,7 +140,7 @@ export interface WorkflowAssistantOptions {
    */
   env?: Record<string, string>;
   /**
-   * LLM provider for pi-ai (e.g., 'anthropic', 'openai', 'google').
+   * LLM provider for pi-ai (e.g., 'anthropic', 'openai', 'google', 'mistral', 'groq', 'xai').
    * Pi-ai only — ignored for Claude and Codex.
    */
   piAiProvider?: string;

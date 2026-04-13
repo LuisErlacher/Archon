@@ -567,6 +567,25 @@ assistants:
         'Permission denied'
       );
     });
+
+    test('preserves pi assistants config when updating other fields', async () => {
+      mockReadConfigFile.mockResolvedValue(`
+assistants:
+  pi:
+    provider: openai
+    model: gpt-4o
+`);
+
+      await updateGlobalConfig({ botName: 'NewName' });
+
+      expect(mockWriteConfigFile).toHaveBeenCalledTimes(1);
+      const writtenContent = mockWriteConfigFile.mock.calls[0]?.[1] as string;
+      const parsed = Bun.YAML.parse(writtenContent) as {
+        assistants?: { pi?: { provider?: string; model?: string } };
+      };
+      expect(parsed.assistants?.pi?.provider).toBe('openai');
+      expect(parsed.assistants?.pi?.model).toBe('gpt-4o');
+    });
   });
 
   describe('toSafeConfig', () => {

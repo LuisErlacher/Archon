@@ -313,6 +313,42 @@ describe('PiAiClient', () => {
       expect(caughtError?.message).toBe('API connection failed');
     });
 
+    test('emits rate_limit chunk before propagating rate limit errors', async () => {
+      mockPromptFn.mockImplementation(async () => {
+        throw new Error('429 Too Many Requests: rate limit exceeded');
+      });
+
+      const chunks: unknown[] = [];
+      let caughtError: Error | null = null;
+      try {
+        for await (const chunk of client.sendQuery('test', '/tmp')) {
+          chunks.push(chunk);
+        }
+      } catch (err) {
+        caughtError = err as Error;
+      }
+
+      expect(chunks.some(c => (c as { type: string }).type === 'rate_limit')).toBe(true);
+      expect(caughtError).not.toBeNull();
+    });
+
+    test('does not emit rate_limit chunk for auth errors', async () => {
+      mockPromptFn.mockImplementation(async () => {
+        throw new Error('401 Unauthorized: invalid api key');
+      });
+
+      const chunks: unknown[] = [];
+      try {
+        for await (const chunk of client.sendQuery('test', '/tmp')) {
+          chunks.push(chunk);
+        }
+      } catch {
+        // expected
+      }
+
+      expect(chunks.some(c => (c as { type: string }).type === 'rate_limit')).toBe(false);
+    });
+
     test('stringifies non-string tool results', async () => {
       mockPromptFn.mockImplementation(async () => {
         const signal = new AbortController().signal;

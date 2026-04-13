@@ -2,7 +2,7 @@
  * AI Assistant Client Factory
  *
  * Dynamically instantiates the appropriate AI assistant client based on type string.
- * Supports Claude and Codex assistants.
+ * Supports Claude, Codex, and Pi AI assistants.
  */
 import type { IAssistantClient } from '../types';
 import { ClaudeClient } from './claude';
@@ -20,7 +20,7 @@ function getLog(): ReturnType<typeof createLogger> {
 /**
  * Get the appropriate AI assistant client based on type
  *
- * @param type - Assistant type identifier ('claude' or 'codex')
+ * @param type - Assistant type identifier ('claude', 'codex', or 'pi-ai')
  * @returns Instantiated assistant client
  * @throws Error if assistant type is unknown
  */

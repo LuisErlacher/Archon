@@ -3,8 +3,8 @@
  *
  * Implements IAssistantClient using @mariozechner/pi-agent-core's Agent class.
  * Unlike Claude and Codex which run as subprocesses, pi-ai runs in-process as a library.
- * Supports 15+ LLM providers (Anthropic, OpenAI, Google, Mistral, Bedrock, Vertex, Groq, xAI, Ollama, vLLM)
- * through a unified interface.
+ * Supports multiple LLM providers via @mariozechner/pi-ai (Anthropic, OpenAI, Google, Mistral,
+ * Bedrock, Vertex, Groq, xAI, Ollama, vLLM, and others).
  */
 import {
   Agent,
@@ -99,6 +99,44 @@ function resolvePath(cwd: string, filePath: string): string {
   return isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
 }
 
+// TypeBox parameter schemas for tools (defined before createCodingTools to preserve top-to-bottom readability)
+const readParams = Type.Object({
+  path: Type.String({ description: 'File path to read' }),
+  offset: Type.Optional(Type.Number({ description: 'Starting line number (0-based)' })),
+  limit: Type.Optional(Type.Number({ description: 'Number of lines to read' })),
+});
+
+const editParams = Type.Object({
+  path: Type.String({ description: 'File path to edit' }),
+  old_string: Type.String({ description: 'Exact string to find and replace' }),
+  new_string: Type.String({ description: 'Replacement string' }),
+});
+
+const writeParams = Type.Object({
+  path: Type.String({ description: 'File path to write' }),
+  content: Type.String({ description: 'File content to write' }),
+});
+
+const bashParams = Type.Object({
+  command: Type.String({ description: 'Shell command to execute' }),
+  timeout: Type.Optional(Type.Number({ description: 'Timeout in milliseconds (default 120000)' })),
+});
+
+const grepParams = Type.Object({
+  pattern: Type.String({ description: 'Search pattern (regex)' }),
+  path: Type.String({ description: 'Directory or file to search' }),
+  case_insensitive: Type.Optional(Type.Boolean({ description: 'Case insensitive search' })),
+});
+
+const findParams = Type.Object({
+  path: Type.String({ description: 'Directory to search in' }),
+  pattern: Type.String({ description: 'Glob pattern to match' }),
+});
+
+const lsParams = Type.Object({
+  path: Type.String({ description: 'Directory path to list' }),
+});
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createCodingTools(cwd: string): AgentTool<any>[] {
   const readTool: AgentTool<typeof readParams> = {
@@ -108,12 +146,21 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
     parameters: readParams,
     async execute(_toolCallId, params) {
       const fullPath = resolvePath(cwd, params.path);
-      const content = await readFile(fullPath, 'utf-8');
-      const lines = content.split('\n');
-      const offset = params.offset ?? 0;
-      const limit = params.limit ?? lines.length;
-      const sliced = lines.slice(offset, offset + limit).join('\n');
-      return { content: [{ type: 'text', text: truncateOutput(sliced) }], details: undefined };
+      try {
+        const content = await readFile(fullPath, 'utf-8');
+        const lines = content.split('\n');
+        const offset = params.offset ?? 0;
+        const limit = params.limit ?? lines.length;
+        const sliced = lines.slice(offset, offset + limit).join('\n');
+        return { content: [{ type: 'text', text: truncateOutput(sliced) }], details: undefined };
+      } catch (err) {
+        const errMsg = (err as NodeJS.ErrnoException).message;
+        getLog().error({ err, path: fullPath }, 'tool.read_failed');
+        return {
+          content: [{ type: 'text', text: `Error reading file "${params.path}": ${errMsg}` }],
+          details: undefined,
+        };
+      }
     },
   };
 
@@ -124,19 +171,28 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
     parameters: editParams,
     async execute(_toolCallId, params) {
       const fullPath = resolvePath(cwd, params.path);
-      const content = await readFile(fullPath, 'utf-8');
-      if (!content.includes(params.old_string)) {
+      try {
+        const content = await readFile(fullPath, 'utf-8');
+        if (!content.includes(params.old_string)) {
+          return {
+            content: [{ type: 'text', text: `Error: old_string not found in ${params.path}` }],
+            details: undefined,
+          };
+        }
+        const newContent = content.replace(params.old_string, params.new_string);
+        await writeFile(fullPath, newContent, 'utf-8');
         return {
-          content: [{ type: 'text', text: `Error: old_string not found in ${params.path}` }],
+          content: [{ type: 'text', text: `File updated: ${params.path}` }],
+          details: undefined,
+        };
+      } catch (err) {
+        const errMsg = (err as NodeJS.ErrnoException).message;
+        getLog().error({ err, path: fullPath }, 'tool.edit_failed');
+        return {
+          content: [{ type: 'text', text: `Error editing file "${params.path}": ${errMsg}` }],
           details: undefined,
         };
       }
-      const newContent = content.replace(params.old_string, params.new_string);
-      await writeFile(fullPath, newContent, 'utf-8');
-      return {
-        content: [{ type: 'text', text: `File updated: ${params.path}` }],
-        details: undefined,
-      };
     },
   };
 
@@ -147,11 +203,20 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
     parameters: writeParams,
     async execute(_toolCallId, params) {
       const fullPath = resolvePath(cwd, params.path);
-      await writeFile(fullPath, params.content, 'utf-8');
-      return {
-        content: [{ type: 'text', text: `File written: ${params.path}` }],
-        details: undefined,
-      };
+      try {
+        await writeFile(fullPath, params.content, 'utf-8');
+        return {
+          content: [{ type: 'text', text: `File written: ${params.path}` }],
+          details: undefined,
+        };
+      } catch (err) {
+        const errMsg = (err as NodeJS.ErrnoException).message;
+        getLog().error({ err, path: fullPath }, 'tool.write_failed');
+        return {
+          content: [{ type: 'text', text: `Error writing file "${params.path}": ${errMsg}` }],
+          details: undefined,
+        };
+      }
     },
   };
 
@@ -227,6 +292,18 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
               details: undefined,
             });
           });
+          grepProc.on('error', (grepErr: Error) => {
+            getLog().warn({ err: grepErr }, 'tool.grep_fallback_failed');
+            resolvePromise({
+              content: [
+                {
+                  type: 'text',
+                  text: `Search unavailable: neither rg nor grep found. ${grepErr.message}`,
+                },
+              ],
+              details: undefined,
+            });
+          });
         });
       });
     },
@@ -239,19 +316,28 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
     parameters: findParams,
     async execute(_toolCallId, params) {
       const searchPath = resolvePath(cwd, params.path);
-      const bunModule = await import('bun');
-      const glob = new bunModule.Glob(params.pattern);
-      const results: string[] = [];
-      for await (const file of glob.scan({ cwd: searchPath })) {
-        results.push(file);
-        if (results.length >= 500) break;
+      try {
+        const bunModule = await import('bun');
+        const glob = new bunModule.Glob(params.pattern);
+        const results: string[] = [];
+        for await (const file of glob.scan({ cwd: searchPath })) {
+          results.push(file);
+          if (results.length >= 500) break;
+        }
+        return {
+          content: [
+            { type: 'text', text: results.length > 0 ? results.join('\n') : 'No files found.' },
+          ],
+          details: undefined,
+        };
+      } catch (err) {
+        const errMsg = (err as NodeJS.ErrnoException).message;
+        getLog().error({ err, path: searchPath }, 'tool.find_failed');
+        return {
+          content: [{ type: 'text', text: `Error finding files in "${params.path}": ${errMsg}` }],
+          details: undefined,
+        };
       }
-      return {
-        content: [
-          { type: 'text', text: results.length > 0 ? results.join('\n') : 'No files found.' },
-        ],
-        details: undefined,
-      };
     },
   };
 
@@ -262,55 +348,26 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
     parameters: lsParams,
     async execute(_toolCallId, params) {
       const fullPath = resolvePath(cwd, params.path);
-      const entries = await readdir(fullPath, { withFileTypes: true });
-      const output = entries.map(e => (e.isDirectory() ? `${e.name}/` : e.name)).join('\n');
-      return {
-        content: [{ type: 'text', text: output || '(empty directory)' }],
-        details: undefined,
-      };
+      try {
+        const entries = await readdir(fullPath, { withFileTypes: true });
+        const output = entries.map(e => (e.isDirectory() ? `${e.name}/` : e.name)).join('\n');
+        return {
+          content: [{ type: 'text', text: output || '(empty directory)' }],
+          details: undefined,
+        };
+      } catch (err) {
+        const errMsg = (err as NodeJS.ErrnoException).message;
+        getLog().error({ err, path: fullPath }, 'tool.ls_failed');
+        return {
+          content: [{ type: 'text', text: `Error listing directory "${params.path}": ${errMsg}` }],
+          details: undefined,
+        };
+      }
     },
   };
 
   return [readTool, editTool, writeTool, bashTool, grepTool, findTool, lsTool];
 }
-
-// TypeBox parameter schemas for tools
-const readParams = Type.Object({
-  path: Type.String({ description: 'File path to read' }),
-  offset: Type.Optional(Type.Number({ description: 'Starting line number (0-based)' })),
-  limit: Type.Optional(Type.Number({ description: 'Number of lines to read' })),
-});
-
-const editParams = Type.Object({
-  path: Type.String({ description: 'File path to edit' }),
-  old_string: Type.String({ description: 'Exact string to find and replace' }),
-  new_string: Type.String({ description: 'Replacement string' }),
-});
-
-const writeParams = Type.Object({
-  path: Type.String({ description: 'File path to write' }),
-  content: Type.String({ description: 'File content to write' }),
-});
-
-const bashParams = Type.Object({
-  command: Type.String({ description: 'Shell command to execute' }),
-  timeout: Type.Optional(Type.Number({ description: 'Timeout in milliseconds (default 120000)' })),
-});
-
-const grepParams = Type.Object({
-  pattern: Type.String({ description: 'Search pattern (regex)' }),
-  path: Type.String({ description: 'Directory or file to search' }),
-  case_insensitive: Type.Optional(Type.Boolean({ description: 'Case insensitive search' })),
-});
-
-const findParams = Type.Object({
-  path: Type.String({ description: 'Directory to search in' }),
-  pattern: Type.String({ description: 'Glob pattern to match' }),
-});
-
-const lsParams = Type.Object({
-  path: Type.String({ description: 'Directory path to list' }),
-});
 
 export class PiAiClient implements IAssistantClient {
   getType(): string {
@@ -334,9 +391,12 @@ export class PiAiClient implements IAssistantClient {
       model = getModel(piProvider as 'anthropic', modelId as 'claude-sonnet-4-20250514');
     } catch (err) {
       const errMsg = (err as Error).message;
-      throw new Error(
+      log.error({ err, piProvider, modelId }, 'pi_ai.model_init_failed');
+      const enriched = new Error(
         `Failed to initialize pi-ai model: provider="${piProvider}", model="${modelId}". ${errMsg}`
       );
+      enriched.cause = err;
+      throw enriched;
     }
 
     const previousMessages = resumeSessionId ? (sessions.get(resumeSessionId) ?? []) : [];
@@ -403,15 +463,24 @@ export class PiAiClient implements IAssistantClient {
       queue.fail(err);
     });
 
+    // Proactively fail the queue when the abort signal fires, so the for-await loop
+    // terminates immediately rather than waiting for the agent to complete naturally.
+    const abortHandler = (): void => {
+      unsubscribe();
+      agent.abort();
+      queue.fail(new Error('Query aborted'));
+    };
+    if (requestOptions?.abortSignal) {
+      requestOptions.abortSignal.addEventListener('abort', abortHandler, { once: true });
+    }
+
     try {
       for await (const chunk of queue) {
         yield chunk;
       }
     } finally {
+      requestOptions?.abortSignal?.removeEventListener('abort', abortHandler);
       unsubscribe();
-      if (requestOptions?.abortSignal?.aborted) {
-        agent.abort();
-      }
     }
   }
 }

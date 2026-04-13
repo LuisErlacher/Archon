@@ -75,7 +75,7 @@ const DEFAULT_CONFIG_CONTENT = `# Archon Global Configuration
 # Bot display name (shown in messages)
 # botName: Archon
 
-# Default AI assistant (claude or codex)
+# Default AI assistant (claude, codex, or pi-ai)
 # defaultAssistant: claude
 
 # Assistant defaults
@@ -494,6 +494,7 @@ export async function updateGlobalConfig(updates: Partial<GlobalConfig>): Promis
       merged.assistants = {
         claude: { ...current.assistants?.claude, ...updates.assistants.claude },
         codex: { ...current.assistants?.codex, ...updates.assistants.codex },
+        pi: { ...current.assistants?.pi, ...updates.assistants.pi },
       };
     }
 

@@ -375,6 +375,8 @@ async function resolveNodeProviderAndModel(
   model: string | undefined;
   options: WorkflowAssistantOptions | undefined;
 }> {
+  // When node sets a model but not a provider, infer provider from the model.
+  // Note: pi-ai models cannot be auto-detected — always set provider: pi-ai explicitly on nodes.
   let provider: 'claude' | 'codex' | 'pi-ai';
 
   if (node.provider) {
@@ -462,7 +464,7 @@ async function resolveNodeProviderAndModel(
   }
 
   // Warn if Codex node has Claude-only SDK options (effort, thinking, maxBudgetUsd, systemPrompt, fallbackModel, betas, sandbox)
-  if (provider === 'codex') {
+  if (provider === 'codex' || provider === 'pi-ai') {
     const claudeOnlyFields = [
       ['effort', node.effort ?? workflowLevelOptions.effort],
       ['thinking', node.thinking ?? workflowLevelOptions.thinking],
@@ -474,11 +476,17 @@ async function resolveNodeProviderAndModel(
     ] as const;
     const present = claudeOnlyFields.filter(([, val]) => val !== undefined).map(([name]) => name);
     if (present.length > 0) {
-      getLog().warn({ nodeId: node.id, fields: present }, 'dag.claude_options_ignored_codex');
+      const providerLabel = provider === 'pi-ai' ? 'Pi AI' : 'Codex';
+      getLog().warn(
+        { nodeId: node.id, fields: present, provider },
+        provider === 'pi-ai'
+          ? 'dag.claude_options_ignored_pi_ai'
+          : 'dag.claude_options_ignored_codex'
+      );
       const delivered = await safeSendMessage(
         platform,
         conversationId,
-        `Warning: Node '${node.id}' has Claude-only options (${present.join(', ')}) but uses Codex — these will be ignored.`,
+        `Warning: Node '${node.id}' has Claude-only options (${present.join(', ')}) but uses ${providerLabel} — these will be ignored.`,
         { workflowId: workflowRunId, nodeName: node.id }
       );
       if (!delivered) {

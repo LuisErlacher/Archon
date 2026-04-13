@@ -1,6 +1,6 @@
 ---
 title: AI Assistants
-description: Configure Claude Code and Codex as AI assistants for Archon.
+description: Configure Claude Code, Codex, or Pi AI as AI assistants for Archon.
 category: getting-started
 area: clients
 audience: [user]
@@ -128,6 +128,39 @@ If you want Codex to be the default AI assistant for new conversations without c
 
 ```ini
 DEFAULT_AI_ASSISTANT=codex
+```
+
+## Pi AI
+
+**Use Pi AI to access multiple LLM providers** (Anthropic, OpenAI, Google, Mistral, Groq, xAI, Ollama, vLLM, and more) through a single unified interface. Unlike Claude Code and Codex, Pi AI runs in-process — no separate CLI login is required.
+
+### Authentication
+
+Pi AI reads API keys from environment variables using the conventions of the selected LLM provider. For example:
+
+- Anthropic backend: `ANTHROPIC_API_KEY`
+- OpenAI backend: `OPENAI_API_KEY`
+- Google backend: `GOOGLE_API_KEY`
+
+Set the relevant key in your `.env` file (or `~/.archon/.env` for global configuration).
+
+### Pi AI Configuration Options
+
+Configure the LLM backend and model in `.archon/config.yaml`:
+
+```yaml
+assistants:
+  pi:
+    provider: anthropic  # LLM backend: 'anthropic', 'openai', 'google', 'mistral', 'groq', 'xai', etc.
+    model: claude-3-5-sonnet-20241022  # Any model ID accepted by the selected provider
+```
+
+### Set as Default (Optional)
+
+If you want Pi AI to be the default AI assistant for new conversations without codebase context, set this environment variable:
+
+```ini
+DEFAULT_AI_ASSISTANT=pi-ai
 ```
 
 ## How Assistant Selection Works
