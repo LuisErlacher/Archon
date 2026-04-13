@@ -121,6 +121,11 @@ import {
   configResponseSchema,
   codebaseEnvironmentsResponseSchema,
 } from './schemas/config.schemas';
+import {
+  loginBodySchema,
+  loginResponseSchema,
+  authStatusResponseSchema,
+} from './schemas/auth.schemas';
 
 // Read app version once at module load (root package.json is 4 levels up from src/routes/)
 let appVersion = 'unknown';
@@ -851,6 +856,41 @@ const getUpdateCheckRoute = createRoute({
   },
 });
 
+const loginRoute = createRoute({
+  method: 'post',
+  path: '/api/auth/login',
+  tags: ['Auth'],
+  summary: 'Login with password and receive a Bearer token',
+  request: {
+    body: {
+      content: { 'application/json': { schema: loginBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: loginResponseSchema } },
+      description: 'Token issued',
+    },
+    400: jsonError('Password required'),
+    401: jsonError('Invalid password'),
+    404: jsonError('Auth not configured'),
+  },
+});
+
+const authStatusRoute = createRoute({
+  method: 'get',
+  path: '/api/auth/status',
+  tags: ['Auth'],
+  summary: 'Check whether password auth is enabled',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: authStatusResponseSchema } },
+      description: 'Auth status',
+    },
+  },
+});
+
 /**
  * Register all /api/* routes on the Hono app.
  */
@@ -905,7 +945,13 @@ export function registerApiRoutes(
       }
       const authHeader = c.req.header('Authorization') ?? '';
       const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-      if (token !== expectedToken) {
+      // Use timing-safe comparison to prevent token oracle timing attacks.
+      // Pad the incoming token to expectedToken length before comparing.
+      const expectedBuf = Buffer.from(expectedToken, 'utf8');
+      const tokenBuf = Buffer.alloc(expectedBuf.length, 0);
+      Buffer.from(token, 'utf8').copy(tokenBuf, 0, 0, Math.min(token.length, expectedBuf.length));
+      if (token.length !== expectedToken.length || !timingSafeEqual(tokenBuf, expectedBuf)) {
+        getLog().warn({ path, tokenPrefix: token.slice(0, 8) || '(empty)' }, 'auth.token_rejected');
         return c.json({ error: 'Unauthorized' }, 401);
       }
       return next();
@@ -2650,18 +2696,18 @@ export function registerApiRoutes(
   });
 
   // Auth: POST /api/auth/login
-  app.post('/api/auth/login', async c => {
+  registerOpenApiRoute(loginRoute, async c => {
     if (!webUiPassword) {
       return c.json({ error: 'Auth not configured' }, 404);
     }
-    const body = await c.req.json<{ password?: unknown }>();
-    if (typeof body.password !== 'string' || !body.password) {
-      return c.json({ error: 'password required' }, 400);
-    }
-    const provided = Buffer.from(body.password, 'utf8');
-    const expected = Buffer.from(webUiPassword, 'utf8');
-    const matches = provided.length === expected.length && timingSafeEqual(provided, expected);
+    const body = getValidatedBody(c, loginBodySchema);
+    // Hash both values with HMAC so buffers are always the same length — prevents
+    // timing leaks from short-circuit length comparison.
+    const providedHash = createHmac('sha256', 'archon-pw-compare').update(body.password).digest();
+    const expectedHash = createHmac('sha256', 'archon-pw-compare').update(webUiPassword).digest();
+    const matches = timingSafeEqual(providedHash, expectedHash);
     if (!matches) {
+      getLog().warn({}, 'auth.login_failed');
       return c.json({ error: 'Invalid password' }, 401);
     }
     const token = createHmac('sha256', webUiPassword).update('archon-web-session').digest('hex');
@@ -2669,7 +2715,7 @@ export function registerApiRoutes(
   });
 
   // Auth: GET /api/auth/status
-  app.get('/api/auth/status', c => {
+  registerOpenApiRoute(authStatusRoute, c => {
     return c.json({ enabled: Boolean(webUiPassword) });
   });
 }

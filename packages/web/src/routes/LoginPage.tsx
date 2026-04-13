@@ -19,8 +19,8 @@ export function LoginPage(): React.ReactElement {
     try {
       await login(password);
       navigate(from, { replace: true });
-    } catch {
-      setError('Invalid password');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsPending(false);
     }

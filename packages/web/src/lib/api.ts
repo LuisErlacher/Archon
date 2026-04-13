@@ -5,6 +5,7 @@
  */
 import type { WorkflowRunStatus } from '@/lib/types';
 import type { components } from '@/lib/api.generated';
+import { AUTH_TOKEN_KEY } from '@/contexts/AuthContext';
 
 export type WorkflowDefinition = components['schemas']['WorkflowDefinition'];
 export type DagNode = components['schemas']['DagNode'];
@@ -59,7 +60,7 @@ export interface HealthResponse {
 
 function getStoredToken(): string | null {
   try {
-    return localStorage.getItem('archon-auth-token');
+    return localStorage.getItem(AUTH_TOKEN_KEY);
   } catch {
     return null;
   }
@@ -73,7 +74,9 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   }
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
-    window.location.href = '/login';
+    // Dispatch a CustomEvent so AuthProvider can handle navigation via React Router
+    // (avoids a full page reload that loses React state and SSE connections).
+    window.dispatchEvent(new CustomEvent('archon:unauthorized'));
     throw new Error('Unauthorized');
   }
   if (!res.ok) {
