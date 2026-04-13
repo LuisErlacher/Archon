@@ -223,3 +223,36 @@ export const workflowRunsQuerySchema = z.object({
   codebaseId: z.string().optional(),
   limit: z.string().optional(),
 });
+
+/** GET /api/workflows/runs/:runId/summary response. */
+export const workflowRunSummarySchema = z
+  .object({
+    id: z.string(),
+    workflow_name: z.string(),
+    status: workflowRunStatusSchema,
+    started_at: z.string(),
+    completed_at: z.string().nullable(),
+    last_activity_at: z.string().nullable(),
+    nodes_completed: z.number(),
+    nodes_failed: z.number(),
+    nodes_total: z.number().nullable(),
+  })
+  .openapi('WorkflowRunSummary');
+
+/** POST /api/workflows/runs/:runId/nodes/:nodeId/complete request body. */
+export const nodeCompleteBodySchema = z
+  .object({ output: z.string().optional() })
+  .openapi('NodeCompleteBody');
+
+/** POST /api/workflows/runs/:runId/nodes/:nodeId/gate-result request body. */
+export const nodeGateResultBodySchema = z
+  .object({
+    passed: z.boolean(),
+    reason: z.string().optional(),
+  })
+  .openapi('NodeGateResultBody');
+
+/** Generic node action response (node complete, gate result). */
+export const nodeActionResponseSchema = z
+  .object({ success: z.boolean(), message: z.string() })
+  .openapi('NodeActionResponse');

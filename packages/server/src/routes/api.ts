@@ -89,6 +89,10 @@ import {
   workflowRunsQuerySchema,
   approveWorkflowRunBodySchema,
   rejectWorkflowRunBodySchema,
+  workflowRunSummarySchema,
+  nodeCompleteBodySchema,
+  nodeGateResultBodySchema,
+  nodeActionResponseSchema,
 } from './schemas/workflow.schemas';
 import {
   conversationListResponseSchema,
@@ -744,6 +748,62 @@ const getWorkflowRunRoute = createRoute({
       content: { 'application/json': { schema: workflowRunDetailSchema } },
       description: 'Workflow run detail',
     },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const getWorkflowRunSummaryRoute = createRoute({
+  method: 'get',
+  path: '/api/workflows/runs/{runId}/summary',
+  tags: ['Workflows'],
+  summary: 'Get lightweight workflow run summary with node counts',
+  request: { params: z.object({ runId: z.string() }) },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: workflowRunSummarySchema } },
+      description: 'Workflow run summary',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const nodeCompleteRoute = createRoute({
+  method: 'post',
+  path: '/api/workflows/runs/{runId}/nodes/{nodeId}/complete',
+  tags: ['Workflows'],
+  summary: 'Mark a workflow DAG node as completed',
+  request: {
+    params: z.object({ runId: z.string(), nodeId: z.string() }),
+    body: { content: { 'application/json': { schema: nodeCompleteBodySchema } } },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: nodeActionResponseSchema } },
+      description: 'Node marked as completed',
+    },
+    400: jsonError('Bad request'),
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const nodeGateResultRoute = createRoute({
+  method: 'post',
+  path: '/api/workflows/runs/{runId}/nodes/{nodeId}/gate-result',
+  tags: ['Workflows'],
+  summary: 'Record quality gate result for a workflow DAG node',
+  request: {
+    params: z.object({ runId: z.string(), nodeId: z.string() }),
+    body: { content: { 'application/json': { schema: nodeGateResultBodySchema } } },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: nodeActionResponseSchema } },
+      description: 'Gate result recorded',
+    },
+    400: jsonError('Bad request'),
     404: jsonError('Not found'),
     500: jsonError('Server error'),
   },
@@ -2051,6 +2111,100 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error, runId }, 'api.workflow_run_delete_failed');
       return apiError(c, 500, 'Failed to delete workflow run');
+    }
+  });
+
+  // GET /api/workflows/runs/:runId/summary - Lightweight run summary with node counts
+  registerOpenApiRoute(getWorkflowRunSummaryRoute, async c => {
+    const runId = c.req.param('runId') ?? '';
+    try {
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) return apiError(c, 404, 'Workflow run not found');
+      const events = await workflowEventDb.listWorkflowEvents(runId);
+      const nodesCompleted = events.filter(e => e.event_type === 'node_completed').length;
+      const nodesFailed = events.filter(e => e.event_type === 'node_failed').length;
+      return c.json({
+        id: run.id,
+        workflow_name: run.workflow_name,
+        status: run.status,
+        started_at: run.started_at instanceof Date ? run.started_at.toISOString() : run.started_at,
+        completed_at:
+          run.completed_at instanceof Date ? run.completed_at.toISOString() : run.completed_at,
+        last_activity_at:
+          run.last_activity_at instanceof Date
+            ? run.last_activity_at.toISOString()
+            : run.last_activity_at,
+        nodes_completed: nodesCompleted,
+        nodes_failed: nodesFailed,
+        nodes_total: (run.metadata.total_nodes as number | undefined) ?? null,
+      });
+    } catch (error) {
+      getLog().error({ err: error, runId }, 'api.workflow_run_summary_failed');
+      return apiError(c, 500, 'Failed to get workflow run summary');
+    }
+  });
+
+  // POST /api/workflows/runs/:runId/nodes/:nodeId/complete - Mark a DAG node as completed
+  registerOpenApiRoute(nodeCompleteRoute, async c => {
+    const runId = c.req.param('runId') ?? '';
+    const nodeId = c.req.param('nodeId') ?? '';
+    try {
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) return apiError(c, 404, 'Workflow run not found');
+      if (run.status !== 'running') {
+        return apiError(c, 400, `Cannot complete node on workflow in '${run.status}' status`);
+      }
+      const body = getValidatedBody(c, nodeCompleteBodySchema);
+      await workflowEventDb.createWorkflowEvent({
+        workflow_run_id: runId,
+        event_type: 'node_completed',
+        step_name: nodeId,
+        data: { node_output: body.output ?? '' },
+      });
+      if (run.conversation_id) {
+        await webAdapter.emitSSE(
+          run.conversation_id,
+          JSON.stringify({ type: 'node_completed', runId, nodeId, timestamp: Date.now() })
+        );
+      }
+      return c.json({ success: true, message: `Node '${nodeId}' marked as completed` });
+    } catch (error) {
+      getLog().error({ err: error, runId, nodeId }, 'api.node_complete_failed');
+      return apiError(c, 500, 'Failed to mark node as completed');
+    }
+  });
+
+  // POST /api/workflows/runs/:runId/nodes/:nodeId/gate-result - Record quality gate result
+  registerOpenApiRoute(nodeGateResultRoute, async c => {
+    const runId = c.req.param('runId') ?? '';
+    const nodeId = c.req.param('nodeId') ?? '';
+    try {
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) return apiError(c, 404, 'Workflow run not found');
+      const body = getValidatedBody(c, nodeGateResultBodySchema);
+      await workflowEventDb.createWorkflowEvent({
+        workflow_run_id: runId,
+        event_type: body.passed ? 'node_completed' : 'node_failed',
+        step_name: nodeId,
+        data: { gate_passed: body.passed, gate_reason: body.reason ?? '' },
+      });
+      if (run.conversation_id) {
+        await webAdapter.emitSSE(
+          run.conversation_id,
+          JSON.stringify({
+            type: 'gate_result',
+            runId,
+            nodeId,
+            passed: body.passed,
+            timestamp: Date.now(),
+          })
+        );
+      }
+      const outcome = body.passed ? 'passed' : 'failed';
+      return c.json({ success: true, message: `Quality gate ${outcome} for node '${nodeId}'` });
+    } catch (error) {
+      getLog().error({ err: error, runId, nodeId }, 'api.node_gate_result_failed');
+      return apiError(c, 500, 'Failed to record gate result');
     }
   });
 
