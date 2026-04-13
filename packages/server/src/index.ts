@@ -58,7 +58,7 @@ import { MessagePersistence } from './adapters/web/persistence';
 import { SSETransport } from './adapters/web/transport';
 import { WorkflowEventBridge } from './adapters/web/workflow-bridge';
 import { registerApiRoutes } from './routes/api';
-import { authMiddleware } from './middleware/auth';
+
 import {
   handleMessage,
   pool,
@@ -488,8 +488,8 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
     return c.json({ error: 'Internal server error' }, 500);
   });
 
-  // Auth middleware (after CORS, before routes)
-  app.use('/api/*', authMiddleware);
+  // Auth handled inside registerApiRoutes() via inline HMAC middleware
+  // when WEB_UI_PASSWORD is set (see api.ts lines 1094-1122)
 
   // Register Web UI API routes (includes auth routes inline)
   registerApiRoutes(app, webAdapter, lockManager);
