@@ -92,7 +92,7 @@ export type WorkflowExecutionResult =
 // WorkflowLoadError / WorkflowLoadResult — workflow discovery results
 // ---------------------------------------------------------------------------
 
-/** Workflow origin — bundled default or project-defined. */
+/** Workflow origin — bundled default, project-defined (filesystem), or database-stored. */
 export type WorkflowSource = 'bundled' | 'project' | 'db';
 
 /** A workflow definition paired with its discovery source. */

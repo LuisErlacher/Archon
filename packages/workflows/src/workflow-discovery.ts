@@ -312,10 +312,23 @@ export async function discoverWorkflowsWithConfig(
     dbWorkflows = await options.getDbWorkflows();
   } catch (error) {
     getLog().warn({ err: error as Error }, 'workflow.db_discovery_failed');
-    return base;
+    return {
+      ...base,
+      errors: [
+        ...base.errors,
+        {
+          filename: '<db>',
+          error: `DB workflow discovery failed: ${(error as Error).message}`,
+          errorType: 'read_error' as const,
+        },
+      ],
+    };
   }
 
-  // Merge: DB overrides same-named filesystem workflows (highest priority)
+  // Merge DB workflows last so they take highest priority.
+  // PUT /api/workflows/:name saves to DB; if the same workflow also exists on
+  // the filesystem (e.g., a committed YAML), the DB version wins — ensuring
+  // the API-managed version is always served.
   const merged = new Map<string, WorkflowWithSource>();
   for (const entry of base.workflows) {
     merged.set(entry.workflow.name, entry);

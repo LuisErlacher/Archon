@@ -558,3 +558,229 @@ describe('GET /api/commands', () => {
     expect(archonAssist?.source).toBe('bundled');
   });
 });
+
+describe('POST /api/workflows/import', () => {
+  test('imports valid YAML and returns source:db', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    mockParseWorkflow.mockReturnValueOnce({
+      workflow: makeTestWorkflow({ name: 'imported-wf', description: 'from import' }),
+      error: null,
+    });
+
+    const response = await app.request('/api/workflows/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'name: imported-wf\ndescription: from import\nnodes: []' }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { source: string; workflow: { name: string } };
+    expect(body.source).toBe('db');
+    expect(body.workflow.name).toBe('imported-wf');
+    expect(mockUpsertWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'imported' })
+    );
+  });
+
+  test('returns 400 when YAML fails parsing', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    mockParseWorkflow.mockReturnValueOnce({
+      workflow: null,
+      error: { filename: 'import.yaml', error: 'bad yaml', errorType: 'validation_error' as const },
+    });
+
+    const response = await app.request('/api/workflows/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'not: valid: yaml: here' }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test('returns 400 when yaml field is empty', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    const response = await app.request('/api/workflows/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: '' }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test('returns 500 when DB upsert fails', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    mockParseWorkflow.mockReturnValueOnce({
+      workflow: makeTestWorkflow({ name: 'my-wf', description: 'test' }),
+      error: null,
+    });
+    mockUpsertWorkflowDefinition.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const response = await app.request('/api/workflows/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'name: my-wf\nnodes: []' }),
+    });
+
+    expect(response.status).toBe(500);
+  });
+});
+
+describe('GET /api/workflows/:name/export', () => {
+  test('returns YAML from DB when workflow exists in DB', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    const wf = makeTestWorkflow({ name: 'my-wf', description: 'test' });
+    mockGetWorkflowDefinition.mockResolvedValueOnce({
+      id: 'uuid-1',
+      name: 'my-wf',
+      description: 'test',
+      definition: JSON.stringify(wf),
+      source: 'user' as const,
+      codebase_id: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+
+    const response = await app.request('/api/workflows/my-wf/export');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/yaml');
+    const yamlText = await response.text();
+    expect(yamlText).toBeTruthy();
+  });
+
+  test('returns 404 when workflow not found in DB or filesystem', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    // DB returns null (default mock already returns null)
+    // discoverWorkflowsWithConfig returns empty list
+    mockDiscoverWorkflows.mockResolvedValueOnce({ workflows: [], errors: [] });
+
+    const response = await app.request('/api/workflows/does-not-exist/export');
+    expect(response.status).toBe(404);
+  });
+
+  test('falls back to filesystem when DB lookup returns null', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    // DB returns null (default mock)
+    // Filesystem has the workflow
+    mockDiscoverWorkflows.mockResolvedValueOnce({
+      workflows: [
+        makeTestWorkflowWithSource({ name: 'deploy', description: 'Deploy app' }, 'bundled'),
+      ],
+      errors: [],
+    });
+
+    const response = await app.request('/api/workflows/deploy/export');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/yaml');
+  });
+});
+
+describe('GET /api/workflows/:name - DB source', () => {
+  test('returns workflow with source:db when found in database', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    const wf = makeTestWorkflow({ name: 'db-workflow', description: 'from db' });
+    mockGetWorkflowDefinition.mockResolvedValueOnce({
+      id: 'uuid-1',
+      name: 'db-workflow',
+      description: 'from db',
+      definition: JSON.stringify(wf),
+      source: 'user' as const,
+      codebase_id: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+    mockParseWorkflow.mockReturnValueOnce({ workflow: wf, error: null });
+
+    const response = await app.request('/api/workflows/db-workflow');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { source: string; workflow: { name: string } };
+    expect(body.source).toBe('db');
+    expect(body.workflow.name).toBe('db-workflow');
+  });
+
+  test('returns 500 when DB record contains invalid workflow definition', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    mockGetWorkflowDefinition.mockResolvedValueOnce({
+      id: 'uuid-1',
+      name: 'corrupt-workflow',
+      description: null,
+      definition: '{"corrupt":true}',
+      source: 'user' as const,
+      codebase_id: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+    mockParseWorkflow.mockReturnValueOnce({
+      workflow: null,
+      error: {
+        filename: 'corrupt-workflow.yaml',
+        error: 'invalid schema',
+        errorType: 'validation_error' as const,
+      },
+    });
+
+    const response = await app.request('/api/workflows/corrupt-workflow');
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain('DB workflow is invalid');
+  });
+});
+
+describe('DELETE /api/workflows/:name - DB error handling', () => {
+  test('returns 500 when DB delete throws', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    mockDeleteWorkflowDefinition.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const response = await app.request('/api/workflows/my-workflow', { method: 'DELETE' });
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain('Failed to delete workflow');
+  });
+});
+
+describe('PUT /api/workflows/:name - mock call assertion', () => {
+  test('calls upsertWorkflowDefinition with name and source:user', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    mockParseWorkflow.mockReturnValueOnce({
+      workflow: makeTestWorkflow({ name: 'my-workflow', description: 'test' }),
+      error: null,
+    });
+    mockUpsertWorkflowDefinition.mockClear();
+
+    await app.request('/api/workflows/my-workflow', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ definition: { name: 'my-workflow', description: 'test', nodes: [] } }),
+    });
+
+    expect(mockUpsertWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'my-workflow',
+        source: 'user',
+      })
+    );
+  });
+});

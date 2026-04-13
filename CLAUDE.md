@@ -375,7 +375,7 @@ import type { DagNode, WorkflowDefinition } from '@/lib/api';
 
 ### Database Schema
 
-**8 Tables (all prefixed with `remote_agent_`):**
+**9 Tables (all prefixed with `remote_agent_`):**
 1. **`codebases`** - Repository metadata and commands (JSONB)
 2. **`conversations`** - Track platform conversations with titles and soft-delete support
 3. **`sessions`** - Track AI SDK sessions with resume capability
@@ -384,6 +384,7 @@ import type { DagNode, WorkflowDefinition } from '@/lib/api';
 6. **`workflow_events`** - Step-level workflow event log (step transitions, artifacts, errors)
 7. **`messages`** - Conversation message history with tool call metadata (JSONB)
 8. **`codebase_env_vars`** - Per-project env vars injected into Claude SDK subprocess env (managed via Web UI or `env:` in config)
+9. **`workflow_definitions`** - DB-backed workflow definitions (created/imported via API; takes priority over filesystem workflows of the same name)
 
 **Key Patterns:**
 - Conversation ID format: Platform-specific (`thread_ts`, `chat_id`, `user/repo#123`)
@@ -748,9 +749,11 @@ Pattern: Use `classifyIsolationError()` (from `@archon/isolation`) to map git er
 **Workflow Management:**
 - `GET /api/workflows` - List available workflows; optional `?cwd=`; returns `{ workflows: [...], errors?: [...] }`
 - `POST /api/workflows/validate` - Validate a workflow definition in-memory (no save); body: `{ definition: object }`; returns `{ valid: boolean, errors?: string[] }`
-- `GET /api/workflows/:name` - Fetch a single workflow by name; optional `?cwd=` query param; returns `{ workflow, filename, source: 'project' | 'bundled' }`
-- `PUT /api/workflows/:name` - Save (create or update) a workflow YAML; body: `{ definition: object }`; validates before writing; requires `?cwd=` or registered codebase
-- `DELETE /api/workflows/:name` - Delete a user-defined workflow; bundled defaults cannot be deleted
+- `GET /api/workflows/:name` - Fetch a single workflow by name; optional `?cwd=` query param; returns `{ workflow, filename, source: 'project' | 'bundled' | 'db' }` (DB-stored workflows take highest priority)
+- `PUT /api/workflows/:name` - Save (create or update) a workflow to the database; body: `{ definition: object }`; validates before saving; no `?cwd=` required
+- `DELETE /api/workflows/:name` - Delete a DB-stored workflow; bundled defaults and filesystem-only workflows cannot be deleted
+- `POST /api/workflows/import` - Import a workflow from raw YAML into the database; body: `{ yaml: string }`; returns `{ workflow, filename, source: 'db' }`
+- `GET /api/workflows/:name/export` - Export a workflow as YAML text; tries DB first, then filesystem; returns `text/yaml`
 
 **Workflow Run Lifecycle:**
 - `POST /api/workflows/runs/{runId}/resume` - Mark a failed run as ready for auto-resume on next invocation

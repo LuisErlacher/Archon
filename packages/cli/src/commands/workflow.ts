@@ -127,7 +127,13 @@ async function loadWorkflows(cwd: string): Promise<WorkflowLoadResult> {
     const results: WorkflowWithSource[] = [];
     for (const record of records) {
       const parsed = parseWorkflow(record.definition, `${record.name}.yaml`);
-      if (parsed.error) continue;
+      if (parsed.error) {
+        getLog().warn(
+          { name: record.name, err: parsed.error.error },
+          'workflow.db_record_parse_failed'
+        );
+        continue;
+      }
       results.push({ workflow: parsed.workflow, source: 'db' });
     }
     return results;

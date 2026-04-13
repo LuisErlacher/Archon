@@ -22,10 +22,6 @@ export interface WorkflowDefinitionRecord {
   updated_at: string;
 }
 
-function normalizeRecord(row: WorkflowDefinitionRecord): WorkflowDefinitionRecord {
-  return row;
-}
-
 export async function upsertWorkflowDefinition(data: {
   name: string;
   description?: string | null;
@@ -34,39 +30,58 @@ export async function upsertWorkflowDefinition(data: {
   codebase_id?: string | null;
 }): Promise<WorkflowDefinitionRecord> {
   const dialect = getDialect();
-  const result = await pool.query<WorkflowDefinitionRecord>(
-    `INSERT INTO remote_agent_workflow_definitions
-       (id, name, description, definition, source, codebase_id, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, ${dialect.now()}, ${dialect.now()})
-     ON CONFLICT (name) DO UPDATE SET
-       description = EXCLUDED.description,
-       definition = EXCLUDED.definition,
-       source = EXCLUDED.source,
-       codebase_id = EXCLUDED.codebase_id,
-       updated_at = ${dialect.now()}
-     RETURNING *`,
-    [
-      dialect.generateUuid(),
-      data.name,
-      data.description ?? null,
-      data.definition,
-      data.source ?? 'user',
-      data.codebase_id ?? null,
-    ]
-  );
+  let result: Awaited<ReturnType<typeof pool.query<WorkflowDefinitionRecord>>>;
+  try {
+    result = await pool.query<WorkflowDefinitionRecord>(
+      `INSERT INTO remote_agent_workflow_definitions
+         (id, name, description, definition, source, codebase_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, ${dialect.now()}, ${dialect.now()})
+       ON CONFLICT (name) DO UPDATE SET
+         description = EXCLUDED.description,
+         definition = EXCLUDED.definition,
+         source = EXCLUDED.source,
+         codebase_id = EXCLUDED.codebase_id,
+         updated_at = ${dialect.now()}
+       RETURNING *`,
+      [
+        dialect.generateUuid(),
+        data.name,
+        data.description ?? null,
+        data.definition,
+        data.source ?? 'user',
+        data.codebase_id ?? null,
+      ]
+    );
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    getLog().error({ err, name: data.name }, 'workflow_definition.upsert_failed');
+    throw err;
+  }
+  const row = result.rows[0];
+  if (!row) {
+    const err = new Error('Upsert returned no rows');
+    getLog().error({ name: data.name }, 'workflow_definition.upsert_no_rows');
+    throw err;
+  }
   getLog().info({ name: data.name }, 'workflow_definition.upsert_completed');
-  return normalizeRecord(result.rows[0]);
+  return row;
 }
 
 export async function getWorkflowDefinition(
   name: string
 ): Promise<WorkflowDefinitionRecord | null> {
-  const result = await pool.query<WorkflowDefinitionRecord>(
-    'SELECT * FROM remote_agent_workflow_definitions WHERE name = $1',
-    [name]
-  );
-  if (result.rows.length === 0) return null;
-  return normalizeRecord(result.rows[0]);
+  try {
+    const result = await pool.query<WorkflowDefinitionRecord>(
+      'SELECT * FROM remote_agent_workflow_definitions WHERE name = $1',
+      [name]
+    );
+    if (result.rows.length === 0) return null;
+    return result.rows[0];
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    getLog().error({ err, name }, 'workflow_definition.get_failed');
+    throw err;
+  }
 }
 
 export async function listWorkflowDefinitions(
@@ -79,8 +94,14 @@ export async function listWorkflowDefinitions(
     params.push(codebaseId);
   }
   sql += ' ORDER BY name ASC';
-  const result = await pool.query<WorkflowDefinitionRecord>(sql, params);
-  return result.rows.map(normalizeRecord);
+  try {
+    const result = await pool.query<WorkflowDefinitionRecord>(sql, params);
+    return [...result.rows];
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    getLog().error({ err, codebaseId }, 'workflow_definition.list_failed');
+    throw err;
+  }
 }
 
 export async function deleteWorkflowDefinition(name: string): Promise<boolean> {

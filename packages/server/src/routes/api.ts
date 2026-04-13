@@ -224,7 +224,7 @@ const exportWorkflowRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'text/plain': { schema: z.string() } },
+      content: { 'text/yaml': { schema: z.string() } },
       description: 'YAML export',
     },
     404: jsonError('Not found'),
@@ -2271,7 +2271,6 @@ export function registerApiRoutes(
   });
 
   // GET /api/workflows/:name/export - Export a workflow as YAML text
-  // MUST be registered before GET /api/workflows/:name so "export" suffix is not treated as :name
   registerOpenApiRoute(exportWorkflowRoute, async c => {
     const name = c.req.param('name') ?? '';
     const cwd = c.req.query('cwd') ?? '';
@@ -2287,7 +2286,8 @@ export function registerApiRoutes(
         });
       }
     } catch (err) {
-      getLog().warn({ err, name }, 'workflow.export_db_lookup_failed');
+      getLog().error({ err, name }, 'workflow.export_db_lookup_failed');
+      getLog().info({ name }, 'workflow.export_falling_back_to_filesystem');
     }
 
     // Fall back to filesystem discovery
@@ -2345,7 +2345,8 @@ export function registerApiRoutes(
           });
         }
       } catch (err) {
-        getLog().warn({ err, name }, 'workflow.db_lookup_failed');
+        getLog().error({ err, name }, 'workflow.db_lookup_failed');
+        getLog().info({ name }, 'workflow.db_lookup_falling_back_to_filesystem');
       }
 
       // 1. Try user-defined workflow in cwd
@@ -2466,11 +2467,17 @@ export function registerApiRoutes(
       return apiError(c, 400, `Cannot delete bundled default workflow: ${name}`);
     }
 
-    const deleted = await workflowDefinitionsDb.deleteWorkflowDefinition(name);
-    if (!deleted) {
-      return apiError(c, 404, `Workflow '${name}' not found in database`);
+    try {
+      const deleted = await workflowDefinitionsDb.deleteWorkflowDefinition(name);
+      if (!deleted) {
+        return apiError(c, 404, `Workflow '${name}' not found in database`);
+      }
+      return c.json({ deleted: true, name });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      getLog().error({ err, name }, 'workflow.definition_delete_failed');
+      return apiError(c, 500, 'Failed to delete workflow');
     }
-    return c.json({ deleted: true, name });
   });
 
   // GET /api/commands - List available command names for the workflow node palette
