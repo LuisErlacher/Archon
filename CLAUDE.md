@@ -172,6 +172,53 @@ This runs type-check, lint, format check, and tests. All four must pass for CI t
 psql $DATABASE_URL < migrations/000_combined.sql
 ```
 
+### Docker Deployment
+
+```bash
+# Build and start (SQLite default — zero config)
+docker compose up -d
+
+# With local PostgreSQL (set DATABASE_URL in .env first)
+docker compose --profile with-db up -d
+
+# With HTTPS via Caddy reverse proxy (set DOMAIN in .env first)
+docker compose --profile cloud up -d
+
+# Full stack: PostgreSQL + Caddy HTTPS
+docker compose --profile with-db --profile cloud up -d
+
+# Rebuild after code changes
+docker compose build && docker compose up -d
+
+# View logs
+docker compose logs -f app
+
+# Stop all services
+docker compose down
+
+# Stop and remove data volumes (destructive!)
+docker compose down -v
+```
+
+**Data persistence:**
+- Default: Docker-managed volume (`archon_data` → `/.archon` in container)
+- Custom path: Set `ARCHON_DATA=/opt/archon-data` in `.env`
+
+**Required `.env` for Docker:**
+- `PORT=3000` (already set in `.env.example`)
+- AI credentials: `CLAUDE_CODE_OAUTH_TOKEN` or `CLAUDE_API_KEY` (global auth not supported in Docker)
+- PostgreSQL: `DATABASE_URL=postgresql://postgres:postgres@postgres:5432/remote_coding_agent`
+
+> `ARCHON_DOCKER=true` is set automatically by `docker-compose.yml` — do not add it to `.env`.
+
+**HTTPS setup (Caddy profile):**
+1. Set `DOMAIN=archon.example.com` in `.env`
+2. Point DNS A record to your VPS IP
+3. Copy `Caddyfile.example` → `Caddyfile` and customize if needed
+4. Run `docker compose --profile cloud up -d`
+
+**Nginx alternative (no Caddy):** See `deploy/nginx.conf` for nginx reverse proxy config.
+
 ### CLI (Command Line)
 
 Run workflows directly from the command line without needing the server. Workflow and isolation commands require running from within a git repository (subdirectories work - resolves to repo root).
