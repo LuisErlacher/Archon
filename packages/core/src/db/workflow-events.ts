@@ -150,3 +150,46 @@ export async function getCompletedDagNodeOutputs(
   }
   return outputs;
 }
+
+/**
+ * Count workflow events for a run, with optional event_type filter.
+ */
+export async function countWorkflowEvents(
+  workflowRunId: string,
+  eventType?: string
+): Promise<number> {
+  const params: unknown[] = [workflowRunId];
+  let sql = 'SELECT COUNT(*) as count FROM remote_agent_workflow_events WHERE workflow_run_id = $1';
+  if (eventType) {
+    sql += ' AND event_type = $2';
+    params.push(eventType);
+  }
+  const result = await pool.query<{ count: number | string }>(sql, params);
+  // SQLite returns string, PostgreSQL returns number
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * List workflow events with pagination and optional event_type filter.
+ */
+export async function listWorkflowEventsPaginated(
+  workflowRunId: string,
+  limit: number,
+  offset: number,
+  eventType?: string
+): Promise<WorkflowEventRow[]> {
+  const params: unknown[] = [workflowRunId];
+  let sql = 'SELECT * FROM remote_agent_workflow_events WHERE workflow_run_id = $1';
+  if (eventType) {
+    sql += ` AND event_type = $${params.length + 1}`;
+    params.push(eventType);
+  }
+  sql += ` ORDER BY created_at ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+  params.push(limit, offset);
+
+  const result = await pool.query<WorkflowEventRow>(sql, params);
+  return [...result.rows].map(row => ({
+    ...row,
+    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+  }));
+}
