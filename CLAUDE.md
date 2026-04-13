@@ -206,9 +206,10 @@ docker compose down -v
 
 **Required `.env` for Docker:**
 - `PORT=3000` (already set in `.env.example`)
-- `ARCHON_DOCKER=true` (set automatically by `docker-compose.yml`)
-- AI credentials: `CLAUDE_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or `CLAUDE_USE_GLOBAL_AUTH=true`
+- AI credentials: `CLAUDE_CODE_OAUTH_TOKEN` or `CLAUDE_API_KEY` (global auth not supported in Docker)
 - PostgreSQL: `DATABASE_URL=postgresql://postgres:postgres@postgres:5432/remote_coding_agent`
+
+> `ARCHON_DOCKER=true` is set automatically by `docker-compose.yml` — do not add it to `.env`.
 
 **HTTPS setup (Caddy profile):**
 1. Set `DOMAIN=archon.example.com` in `.env`

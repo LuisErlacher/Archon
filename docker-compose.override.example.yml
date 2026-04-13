@@ -33,4 +33,5 @@ services:
 #       WEB_UI_DEV: "true"     # Tells server to skip serveStatic (use vite dev server)
 #     ports:
 #       - "5173:5173"          # Vite dev server
-#     # NOTE: Run 'docker compose run app bun run dev:web' separately for the frontend
+#     # NOTE: Run Vite dev server on the host (not in Docker):
+#     #   bun run dev:web    # Frontend connects to Docker backend on port 3000
