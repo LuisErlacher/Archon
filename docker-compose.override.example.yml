@@ -14,3 +14,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.user
+
+# ---------------------------------------------------------------------------
+# ALTERNATIVE: Development hot-reload (source mounts, no Dockerfile.user)
+# ---------------------------------------------------------------------------
+# To use: overwrite with this content (instead of the Dockerfile.user block above)
+#
+# services:
+#   app:
+#     build:
+#       context: .
+#       target: deps           # Stop at Stage 1 (skip web-build + production)
+#     command: bun run dev:server
+#     volumes:
+#       - .:/app               # Mount full source for hot-reload
+#       - /app/node_modules    # Exclude node_modules (installed in image)
+#     environment:
+#       WEB_UI_DEV: "true"     # Tells server to skip serveStatic (use vite dev server)
+#     ports:
+#       - "5173:5173"          # Vite dev server
+#     # NOTE: Run 'docker compose run app bun run dev:web' separately for the frontend
