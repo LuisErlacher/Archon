@@ -188,7 +188,7 @@ nodes:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | `'claude'` \| `'codex'` | inherited | Per-node provider override |
+| `provider` | `'claude'` \| `'codex'` \| `'pi-ai'` | inherited | Per-node provider override |
 | `model` | string | inherited | Per-node model override |
 | `output_format` | object | — | JSON Schema for structured output (Claude and Codex) |
 | `allowed_tools` | string[] | — | Whitelist of built-in tools. `[]` = no tools. Claude only |
@@ -542,7 +542,7 @@ Model and options are resolved in this order:
 
 ```yaml
 name: my-workflow
-provider: claude     # 'claude' or 'codex' (default: from config)
+provider: claude     # 'claude', 'codex', or 'pi-ai' (default: from config)
 model: sonnet        # Model override (default: from config assistants.claude.model)
 ```
 

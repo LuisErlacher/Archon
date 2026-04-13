@@ -362,7 +362,7 @@ function expandEnvVars(config: Record<string, unknown>): {
  */
 async function resolveNodeProviderAndModel(
   node: DagNode,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   config: WorkflowConfig,
   platform: IWorkflowPlatform,
@@ -371,11 +371,13 @@ async function resolveNodeProviderAndModel(
   cwd: string,
   workflowLevelOptions: WorkflowLevelOptions
 ): Promise<{
-  provider: 'claude' | 'codex';
+  provider: 'claude' | 'codex' | 'pi-ai';
   model: string | undefined;
   options: WorkflowAssistantOptions | undefined;
 }> {
-  let provider: 'claude' | 'codex';
+  // When node sets a model but not a provider, infer provider from the model.
+  // Note: pi-ai models cannot be auto-detected — always set provider: pi-ai explicitly on nodes.
+  let provider: 'claude' | 'codex' | 'pi-ai';
 
   if (node.provider) {
     provider = node.provider;
@@ -387,9 +389,14 @@ async function resolveNodeProviderAndModel(
     provider = workflowProvider;
   }
 
+  const nodeAssistantDefaults =
+    provider === 'claude'
+      ? config.assistants.claude
+      : provider === 'codex'
+        ? config.assistants.codex
+        : config.assistants.pi;
   const model =
-    node.model ??
-    (provider === workflowProvider ? workflowModel : config.assistants[provider]?.model);
+    node.model ?? (provider === workflowProvider ? workflowModel : nodeAssistantDefaults?.model);
 
   if (!isModelCompatible(provider, model)) {
     throw new Error(
@@ -457,7 +464,7 @@ async function resolveNodeProviderAndModel(
   }
 
   // Warn if Codex node has Claude-only SDK options (effort, thinking, maxBudgetUsd, systemPrompt, fallbackModel, betas, sandbox)
-  if (provider === 'codex') {
+  if (provider === 'codex' || provider === 'pi-ai') {
     const claudeOnlyFields = [
       ['effort', node.effort ?? workflowLevelOptions.effort],
       ['thinking', node.thinking ?? workflowLevelOptions.thinking],
@@ -469,11 +476,17 @@ async function resolveNodeProviderAndModel(
     ] as const;
     const present = claudeOnlyFields.filter(([, val]) => val !== undefined).map(([name]) => name);
     if (present.length > 0) {
-      getLog().warn({ nodeId: node.id, fields: present }, 'dag.claude_options_ignored_codex');
+      const providerLabel = provider === 'pi-ai' ? 'Pi AI' : 'Codex';
+      getLog().warn(
+        { nodeId: node.id, fields: present, provider },
+        provider === 'pi-ai'
+          ? 'dag.claude_options_ignored_pi_ai'
+          : 'dag.claude_options_ignored_codex'
+      );
       const delivered = await safeSendMessage(
         platform,
         conversationId,
-        `Warning: Node '${node.id}' has Claude-only options (${present.join(', ')}) but uses Codex — these will be ignored.`,
+        `Warning: Node '${node.id}' has Claude-only options (${present.join(', ')}) but uses ${providerLabel} — these will be ignored.`,
         { workflowId: workflowRunId, nodeName: node.id }
       );
       if (!delivered) {
@@ -486,7 +499,15 @@ async function resolveNodeProviderAndModel(
   }
 
   let options: WorkflowAssistantOptions | undefined;
-  if (provider === 'codex') {
+  if (provider === 'pi-ai') {
+    options = {
+      model,
+      piAiProvider: config.assistants.pi?.provider,
+    };
+    if (node.output_format) {
+      options.outputFormat = { type: 'json_schema', schema: node.output_format };
+    }
+  } else if (provider === 'codex') {
     options = {
       model,
       modelReasoningEffort: config.assistants.codex.modelReasoningEffort,
@@ -716,7 +737,7 @@ async function executeNodeInternal(
   cwd: string,
   workflowRun: WorkflowRun,
   node: CommandNode | PromptNode,
-  provider: 'claude' | 'codex',
+  provider: 'claude' | 'codex' | 'pi-ai',
   nodeOptions: WorkflowAssistantOptions | undefined,
   artifactsDir: string,
   logDir: string,
@@ -1667,10 +1688,18 @@ async function executeScriptNode(
  * Caller is responsible for resolving per-node overrides before passing model.
  */
 function buildLoopNodeOptions(
-  provider: 'claude' | 'codex',
+  provider: 'claude' | 'codex' | 'pi-ai',
   model: string | undefined,
   config: WorkflowConfig
 ): WorkflowAssistantOptions | undefined {
+  if (provider === 'pi-ai') {
+    const piOptions: WorkflowAssistantOptions = {
+      ...(model ? { model } : {}),
+      piAiProvider: config.assistants.pi?.provider,
+    };
+    return Object.keys(piOptions).length > 0 ? piOptions : undefined;
+  }
+
   const codexOptions =
     provider === 'codex'
       ? {
@@ -1704,7 +1733,7 @@ async function executeLoopNode(
   cwd: string,
   workflowRun: WorkflowRun,
   node: LoopNode,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   artifactsDir: string,
   logDir: string,
@@ -2192,7 +2221,7 @@ async function executeApprovalNode(
   deps: WorkflowDeps,
   platform: IWorkflowPlatform,
   conversationId: string,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   cwd: string,
   artifactsDir: string,
@@ -2362,7 +2391,7 @@ export async function executeDagWorkflow(
   cwd: string,
   workflow: { name: string; nodes: readonly DagNode[] } & WorkflowLevelOptions,
   workflowRun: WorkflowRun,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'pi-ai',
   workflowModel: string | undefined,
   artifactsDir: string,
   logDir: string,
@@ -2599,7 +2628,7 @@ export async function executeDagWorkflow(
           // 3b. Loop node dispatch — manages its own AI sessions and iteration
           if (isLoopNode(node)) {
             // Resolve per-node provider/model overrides (same logic as other node types)
-            let loopProvider: 'claude' | 'codex';
+            let loopProvider: 'claude' | 'codex' | 'pi-ai';
             if (node.provider) {
               loopProvider = node.provider;
             } else if (node.model && isClaudeModel(node.model)) {
@@ -2609,11 +2638,15 @@ export async function executeDagWorkflow(
             } else {
               loopProvider = workflowProvider;
             }
+            const loopAssistantDefaults =
+              loopProvider === 'claude'
+                ? config.assistants.claude
+                : loopProvider === 'codex'
+                  ? config.assistants.codex
+                  : config.assistants.pi;
             const loopModel =
               node.model ??
-              (loopProvider === workflowProvider
-                ? workflowModel
-                : config.assistants[loopProvider]?.model);
+              (loopProvider === workflowProvider ? workflowModel : loopAssistantDefaults?.model);
 
             if (!isModelCompatible(loopProvider, loopModel)) {
               return {

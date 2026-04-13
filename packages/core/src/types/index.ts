@@ -293,6 +293,8 @@ export interface AssistantRequestOptions {
   agents?: Record<string, AgentDefinition>;
   /** Name of agent definition for the main thread. References a key in `agents`. Claude only. */
   agent?: string;
+  /** Pi-ai LLM provider name (e.g. 'anthropic', 'openai', 'google'). Pi-ai only — ignored for Claude and Codex. */
+  piAiProvider?: string;
   /**
    * Abort signal for cancelling in-flight AI requests.
    * When aborted, the AI client should terminate the subprocess/query gracefully.

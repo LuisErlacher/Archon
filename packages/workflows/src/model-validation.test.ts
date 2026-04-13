@@ -65,5 +65,12 @@ describe('model-validation', () => {
       expect(isModelCompatible('claude', '')).toBe(true);
       expect(isModelCompatible('codex', '')).toBe(true);
     });
+
+    it('should accept any model with pi-ai provider', () => {
+      expect(isModelCompatible('pi-ai', 'gpt-4o')).toBe(true);
+      expect(isModelCompatible('pi-ai', 'claude-sonnet-4-5')).toBe(true);
+      expect(isModelCompatible('pi-ai', 'gemini-pro')).toBe(true);
+      expect(isModelCompatible('pi-ai')).toBe(true);
+    });
   });
 });
