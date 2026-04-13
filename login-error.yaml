@@ -1,0 +1,17 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e7]: A
+    - heading "Archon" [level=1] [ref=e8]
+    - paragraph [ref=e9]: Sign in to your account
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]: Username
+      - textbox "Username" [ref=e13]: wronguser
+    - generic [ref=e14]:
+      - generic [ref=e15]: Password
+      - textbox "Password" [ref=e16]: wrongpass
+    - paragraph [ref=e20]: Invalid username or password
+    - button "Sign in" [ref=e17]
+  - generic [ref=e18]:
+    - text: Don't have an account?
+    - button "Register" [ref=e19]

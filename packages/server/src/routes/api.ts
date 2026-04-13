@@ -9,7 +9,7 @@ import type { WebAdapter } from '../adapters/web';
 import { rm, readFile, writeFile, unlink, mkdir } from 'fs/promises';
 import { readFileSync } from 'fs';
 import { normalize, join, sep, basename } from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import type { Context } from 'hono';
 import type {
   ConversationLockManager,
@@ -133,6 +133,11 @@ import {
   codebaseEnvironmentsResponseSchema,
 } from './schemas/config.schemas';
 import { getValidatedBody } from './utils';
+import {
+  loginBodySchema,
+  loginResponseSchema,
+  authStatusResponseSchema,
+} from './schemas/auth.schemas';
 
 // Read app version once at module load (root package.json is 4 levels up from src/routes/)
 let appVersion = 'unknown';
@@ -943,6 +948,41 @@ const storeGateResultRoute = createRoute({
   },
 });
 
+const loginRoute = createRoute({
+  method: 'post',
+  path: '/api/auth/login',
+  tags: ['Auth'],
+  summary: 'Login with password and receive a Bearer token',
+  request: {
+    body: {
+      content: { 'application/json': { schema: loginBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: loginResponseSchema } },
+      description: 'Token issued',
+    },
+    400: jsonError('Password required'),
+    401: jsonError('Invalid password'),
+    404: jsonError('Auth not configured'),
+  },
+});
+
+const authStatusRoute = createRoute({
+  method: 'get',
+  path: '/api/auth/status',
+  tags: ['Auth'],
+  summary: 'Check whether password auth is enabled',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: authStatusResponseSchema } },
+      description: 'Auth status',
+    },
+  },
+});
+
 /**
  * Register all /api/* routes on the Hono app.
  */
@@ -986,6 +1026,39 @@ export function registerApiRoutes(
   // CORS for Web UI — allow-all is fine for a single-developer tool.
   // Override with WEB_UI_ORIGIN env var to restrict if exposing publicly.
   app.use('/api/*', cors({ origin: process.env.WEB_UI_ORIGIN || '*' }));
+
+  // Optional Web UI auth. When WEB_UI_PASSWORD is set, all /api/* requests must
+  // carry a Bearer token. Routes that must remain public (health, login, status,
+  // SSE streams) are explicitly exempted.
+  const webUiPassword = process.env.WEB_UI_PASSWORD;
+  if (webUiPassword) {
+    const expectedToken = createHmac('sha256', webUiPassword)
+      .update('archon-web-session')
+      .digest('hex');
+
+    app.use('/api/*', async (c, next) => {
+      const path = new URL(c.req.url).pathname;
+      if (
+        path === '/api/health' ||
+        path.startsWith('/api/auth/') ||
+        path.startsWith('/api/stream/')
+      ) {
+        return next();
+      }
+      const authHeader = c.req.header('Authorization') ?? '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+      // Use timing-safe comparison to prevent token oracle timing attacks.
+      // Pad the incoming token to expectedToken length before comparing.
+      const expectedBuf = Buffer.from(expectedToken, 'utf8');
+      const tokenBuf = Buffer.alloc(expectedBuf.length, 0);
+      Buffer.from(token, 'utf8').copy(tokenBuf, 0, 0, Math.min(token.length, expectedBuf.length));
+      if (token.length !== expectedToken.length || !timingSafeEqual(tokenBuf, expectedBuf)) {
+        getLog().warn({ path, tokenPrefix: token.slice(0, 8) || '(empty)' }, 'auth.token_rejected');
+        return c.json({ error: 'Unauthorized' }, 401);
+      }
+      return next();
+    });
+  }
 
   // Shared lock/dispatch/error handling for message and workflow endpoints
   /** Maximum allowed upload size per file (10 MB) */
@@ -2899,5 +2972,29 @@ export function registerApiRoutes(
     if (!BUNDLED_IS_BINARY) return c.json(noUpdate);
     const result = await checkForUpdate(appVersion);
     return c.json(result ?? noUpdate);
+  });
+
+  // Auth: POST /api/auth/login
+  registerOpenApiRoute(loginRoute, async c => {
+    if (!webUiPassword) {
+      return c.json({ error: 'Auth not configured' }, 404);
+    }
+    const body = getValidatedBody(c, loginBodySchema);
+    // Hash both values with HMAC so buffers are always the same length — prevents
+    // timing leaks from short-circuit length comparison.
+    const providedHash = createHmac('sha256', 'archon-pw-compare').update(body.password).digest();
+    const expectedHash = createHmac('sha256', 'archon-pw-compare').update(webUiPassword).digest();
+    const matches = timingSafeEqual(providedHash, expectedHash);
+    if (!matches) {
+      getLog().warn({}, 'auth.login_failed');
+      return c.json({ error: 'Invalid password' }, 401);
+    }
+    const token = createHmac('sha256', webUiPassword).update('archon-web-session').digest('hex');
+    return c.json({ token });
+  });
+
+  // Auth: GET /api/auth/status
+  registerOpenApiRoute(authStatusRoute, c => {
+    return c.json({ enabled: Boolean(webUiPassword) });
   });
 }

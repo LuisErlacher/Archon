@@ -1,117 +1,105 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { getCurrentUser, refreshSession, setApiToken, type UserResponse } from '@/lib/api';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router';
+
+export const AUTH_TOKEN_KEY = 'archon-auth-token';
 
 interface AuthContextValue {
-  user: UserResponse | null;
-  accessToken: string | null;
-  login: (accessToken: string, refreshToken: string, user: UserResponse) => void;
-  logout: () => void;
+  token: string | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
+  isEnabled: boolean;
+  isInitializing: boolean;
+  login: (password: string) => Promise<void>;
+  logout: () => void;
 }
-
-const REFRESH_TOKEN_KEY = 'archon-refresh-token';
 
 const authContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [refreshTokenState, setRefreshTokenState] = useState<string | null>(() => {
+  // Read token SYNCHRONOUSLY — prevents redirect-on-refresh race condition.
+  // Pattern mirrors ProjectContext.tsx:19-25 (localStorage in useState initializer).
+  const [token, setToken] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(REFRESH_TOKEN_KEY);
+      return localStorage.getItem(AUTH_TOKEN_KEY);
     } catch {
       return null;
     }
   });
-  const [user, setUser] = useState<UserResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const initializedRef = useRef(false);
+  const [isEnabled, setIsEnabled] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const navigate = useNavigate();
 
-  function clearTokens(): void {
-    setAccessToken(null);
-    setRefreshTokenState(null);
-    setUser(null);
-    setApiToken(null);
-    try {
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-    } catch {
-      /* best-effort */
-    }
-  }
-
-  // On mount, try to restore session via refresh token
+  // One-time check: is auth enabled on the server?
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
-    if (!refreshTokenState) {
-      setIsLoading(false);
-      return;
-    }
-    refreshSession(refreshTokenState)
-      .then(data => {
-        setAccessToken(data.accessToken);
-        setRefreshTokenState(data.refreshToken);
-        setApiToken(data.accessToken);
-        try {
-          localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        } catch {
-          /* best-effort */
-        }
+    fetch('/api/auth/status')
+      .then(r => r.json() as Promise<{ enabled: boolean }>)
+      .then(({ enabled }) => {
+        setIsEnabled(enabled);
       })
-      .catch((err: unknown) => {
-        // Expected on token expiry; unexpected on server errors — log for diagnostics
-        console.warn('[AuthContext] Session restore failed:', err);
-        clearTokens();
+      .catch(() => {
+        // Cannot confirm auth status — default to enabled (fail-closed).
+        // If the server is genuinely unreachable, the login fetch will also fail,
+        // giving the user a clear error message via the LoginPage catch block.
+        setIsEnabled(true);
       })
       .finally(() => {
-        setIsLoading(false);
+        setIsInitializing(false);
       });
-  }, [refreshTokenState]);
+  }, []);
 
-  // Fetch user profile once access token is set
-  useEffect(() => {
-    if (!accessToken) return;
-    getCurrentUser(accessToken)
-      .then(u => {
-        setUser(u);
-      })
-      .catch((err: unknown) => {
-        console.warn('[AuthContext] Failed to fetch user profile:', err);
-        clearTokens();
-      });
-  }, [accessToken]);
-
-  // Listen for 401 events from fetchJSON
+  // Listen for unauthorized events dispatched by fetchJSON (e.g. stale token).
+  // Using a CustomEvent keeps api.ts decoupled from React context while still
+  // respecting React Router navigation (no full page reload).
   useEffect(() => {
     const handler = (): void => {
-      clearTokens();
+      setToken(null);
+      try {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+      } catch {
+        // ignore
+      }
+      navigate('/login');
     };
     window.addEventListener('archon:unauthorized', handler);
     return (): void => {
       window.removeEventListener('archon:unauthorized', handler);
     };
-  }, []);
+  }, [navigate]);
 
-  const login = useCallback((at: string, rt: string, u: UserResponse): void => {
-    setAccessToken(at);
-    setRefreshTokenState(rt);
-    setUser(u);
-    setApiToken(at);
-    try {
-      localStorage.setItem(REFRESH_TOKEN_KEY, rt);
-    } catch {
-      /* best-effort */
+  const login = useCallback(async (password: string): Promise<void> => {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      if (res.status >= 500) throw new Error('Server error. Try again in a moment.');
+      // 401 = wrong password, 400 = bad request (treat both as wrong password)
+      throw new Error('Invalid password');
     }
+    const { token: newToken } = (await res.json()) as { token: string };
+    try {
+      localStorage.setItem(AUTH_TOKEN_KEY, newToken);
+    } catch {
+      // best-effort persistence
+    }
+    setToken(newToken);
   }, []);
 
   const logout = useCallback((): void => {
-    clearTokens();
-  }, []);
+    try {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    } catch {
+      // ignore
+    }
+    setToken(null);
+    navigate('/login');
+  }, [navigate]);
+
+  const isAuthenticated = !isEnabled || token !== null;
 
   return (
     <authContext.Provider
-      value={{ user, accessToken, login, logout, isAuthenticated: !!accessToken, isLoading }}
+      value={{ token, isAuthenticated, isEnabled, isInitializing, login, logout }}
     >
       {children}
     </authContext.Provider>
@@ -120,6 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(authContext);
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 }

@@ -1,6 +1,6 @@
 import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from '@/components/layout/Layout';
 import { ProjectProvider } from '@/contexts/ProjectContext';
@@ -8,11 +8,11 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { queryClient } from '@/lib/query-client';
 import { DashboardPage } from '@/routes/DashboardPage';
 import { ChatPage } from '@/routes/ChatPage';
+import { LoginPage } from '@/routes/LoginPage';
 import { WorkflowsPage } from '@/routes/WorkflowsPage';
 import { WorkflowExecutionPage } from '@/routes/WorkflowExecutionPage';
 import { WorkflowBuilderPage } from '@/routes/WorkflowBuilderPage';
 import { SettingsPage } from '@/routes/SettingsPage';
-import { LoginPage } from '@/routes/LoginPage';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -62,19 +62,20 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
   }
 }
 
-function RequireAuth({ children }: { children: ReactNode }): React.ReactElement {
-  const { isAuthenticated, isLoading } = useAuth();
+function RequireAuth({ children }: { children: React.ReactNode }): React.ReactElement {
+  const { isAuthenticated, isInitializing } = useAuth();
+  const location = useLocation();
 
-  if (isLoading) {
+  if (isInitializing) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-sm text-text-secondary">Loading...</div>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
   return <>{children}</>;
@@ -84,32 +85,32 @@ export function App(): React.ReactElement {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ProjectProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route
-                  element={
-                    <RequireAuth>
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                element={
+                  <RequireAuth>
+                    <ProjectProvider>
                       <Layout />
-                    </RequireAuth>
-                  }
-                >
-                  <Route path="/" element={<Navigate to="/chat" replace />} />
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/chat/*" element={<ChatPage />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/workflows" element={<WorkflowsPage />} />
-                  <Route path="/workflows/builder" element={<WorkflowBuilderPage />} />
-                  <Route path="/workflows/runs/:runId" element={<WorkflowExecutionPage />} />
-                  <Route path="/workflows/runs" element={<Navigate to="/workflows" replace />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
-          </ProjectProvider>
-        </AuthProvider>
+                    </ProjectProvider>
+                  </RequireAuth>
+                }
+              >
+                <Route path="/" element={<Navigate to="/chat" replace />} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chat/*" element={<ChatPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/workflows" element={<WorkflowsPage />} />
+                <Route path="/workflows/builder" element={<WorkflowBuilderPage />} />
+                <Route path="/workflows/runs/:runId" element={<WorkflowExecutionPage />} />
+                <Route path="/workflows/runs" element={<Navigate to="/workflows" replace />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Route>
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>
   );

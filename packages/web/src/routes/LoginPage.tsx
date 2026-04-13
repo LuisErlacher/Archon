@@ -1,159 +1,58 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { loginApi, registerApi } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-
-type Mode = 'login' | 'register';
 
 export function LoginPage(): React.ReactElement {
-  const [mode, setMode] = useState<Mode>('login');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const auth = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
+  const from = (location.state as { from?: string } | null)?.from ?? '/';
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    setError('');
-    setIsSubmitting(true);
-
+    setError(null);
+    setIsPending(true);
     try {
-      const result =
-        mode === 'login'
-          ? await loginApi(username, password)
-          : await registerApi(username, password, displayName || undefined);
-
-      auth.login(result.accessToken, result.refreshToken, result.user);
-      navigate('/chat');
+      await login(password);
+      navigate(from, { replace: true });
     } catch (err) {
-      const msg = (err as Error).message;
-      if (msg.includes('401')) {
-        setError('Invalid username or password');
-      } else if (msg.includes('409')) {
-        setError('Username already taken');
-      } else {
-        setError(msg);
-      }
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
-      setIsSubmitting(false);
+      setIsPending(false);
     }
   }
 
   return (
     <div className="flex h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-surface p-8">
-        <div className="text-center">
-          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-semibold text-primary-foreground">A</span>
-          </div>
-          <h1 className="mt-4 text-xl font-semibold text-text-primary">Archon</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
-          </p>
-        </div>
-
-        <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
-          <div>
-            <label
-              htmlFor="username"
-              className="block text-sm font-medium text-text-secondary mb-1"
-            >
-              Username
-            </label>
-            <Input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e): void => {
-                setUsername(e.target.value);
-              }}
-              required
-              minLength={mode === 'register' ? 3 : undefined}
-              autoFocus
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-text-secondary mb-1"
-            >
-              Password
-            </label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e): void => {
-                setPassword(e.target.value);
-              }}
-              required
-              minLength={mode === 'register' ? 8 : undefined}
-            />
-          </div>
-
-          {mode === 'register' && (
-            <div>
-              <label
-                htmlFor="displayName"
-                className="block text-sm font-medium text-text-secondary mb-1"
-              >
-                Display Name (optional)
-              </label>
-              <Input
-                id="displayName"
-                type="text"
-                value={displayName}
-                onChange={(e): void => {
-                  setDisplayName(e.target.value);
-                }}
-              />
-            </div>
-          )}
-
-          {error && <p className="text-sm text-error">{error}</p>}
-
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'}
-          </Button>
+      <div className="w-full max-w-sm rounded-xl bg-surface-elevated p-8">
+        <h1 className="mb-6 text-center text-xl font-semibold text-text-primary">Sign In</h1>
+        {error && (
+          <p className="mb-4 rounded-md bg-error/10 px-3 py-2 text-sm text-error">{error}</p>
+        )}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => {
+              setPassword(e.target.value);
+            }}
+            className="rounded-md border border-border bg-background px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            autoFocus
+            required
+          />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-md bg-primary px-4 py-2 font-medium text-white disabled:opacity-50"
+          >
+            {isPending ? 'Signing in\u2026' : 'Sign In'}
+          </button>
         </form>
-
-        <div className="text-center text-sm text-text-secondary">
-          {mode === 'login' ? (
-            <>
-              Don&apos;t have an account?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('register');
-                  setError('');
-                }}
-                className="text-primary hover:underline"
-              >
-                Register
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setError('');
-                }}
-                className="text-primary hover:underline"
-              >
-                Sign in
-              </button>
-            </>
-          )}
-        </div>
       </div>
     </div>
   );
