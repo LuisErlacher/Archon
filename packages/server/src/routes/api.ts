@@ -63,6 +63,7 @@ function getLog(): ReturnType<typeof createLogger> {
 }
 import * as conversationDb from '@archon/core/db/conversations';
 import * as codebaseDb from '@archon/core/db/codebases';
+import * as usersDb from '@archon/core/db/users';
 import * as envVarDb from '@archon/core/db/env-vars';
 import * as isolationEnvDb from '@archon/core/db/isolation-environments';
 import * as workflowDb from '@archon/core/db/workflows';
@@ -868,6 +869,13 @@ export function registerApiRoutes(
     return c.json({ error: message, ...(detail ? { detail } : {}) }, status);
   }
 
+  function getUserId(c: Context): { userId: string | undefined; isAdmin: boolean } {
+    const userId = c.get('userId') as string | undefined;
+    const userRole = c.get('userRole') as string | undefined;
+    // When auth middleware is not applied (tests, JWT_SECRET not set), treat as admin
+    return { userId, isAdmin: !userId || userRole === 'admin' };
+  }
+
   /**
    * Validate that a caller-supplied `cwd` is rooted at a registered codebase path.
    * This prevents path traversal — callers cannot read/write outside known project roots.
@@ -1038,17 +1046,22 @@ export function registerApiRoutes(
     return { accepted: true, status: result.status };
   }
 
-  // GET /api/conversations - List conversations
+  // GET /api/conversations - List conversations (scoped by user)
   registerOpenApiRoute(getConversationsRoute, async c => {
     try {
       const platformType = c.req.query('platform') ?? undefined;
       const codebaseId = c.req.query('codebaseId') ?? undefined;
-      const conversations = await conversationDb.listConversations(
-        50,
-        platformType,
-        codebaseId,
-        true
-      );
+      const { userId, isAdmin } = getUserId(c);
+      const conversations =
+        isAdmin || !userId
+          ? await conversationDb.listConversations(50, platformType, codebaseId, true)
+          : await conversationDb.listConversationsForUser(
+              userId,
+              50,
+              platformType,
+              codebaseId,
+              true
+            );
       return c.json(conversations);
     } catch (error) {
       getLog().error({ err: error }, 'list_conversations_failed');
@@ -1093,6 +1106,12 @@ export function registerApiRoutes(
         codebaseId
       );
       webAdapter.setConversationDbId(conversation.platform_conversation_id, conversation.id);
+
+      // Set user_id on the conversation for ownership scoping
+      const { userId } = getUserId(c);
+      if (userId) {
+        await conversationDb.setConversationUserId(conversation.id, userId);
+      }
 
       // If message provided, dispatch it atomically (avoids ghost "Untitled" conversations)
       if (message) {
@@ -1454,10 +1473,14 @@ export function registerApiRoutes(
     });
   });
 
-  // GET /api/codebases - List codebases
+  // GET /api/codebases - List codebases (scoped by user membership)
   registerOpenApiRoute(listCodebasesRoute, async c => {
     try {
-      const codebases = await codebaseDb.listCodebases();
+      const { userId, isAdmin } = getUserId(c);
+      const codebases =
+        isAdmin || !userId
+          ? await codebaseDb.listCodebases()
+          : await codebaseDb.listCodebasesForUser(userId);
 
       // Deduplicate by repository_url (keep most recently updated)
       const normalizeUrl = (url: string): string => url.replace(/\.git$/, '');
@@ -1534,6 +1557,16 @@ export function registerApiRoutes(
       const codebase = await codebaseDb.getCodebase(result.codebaseId);
       if (!codebase) {
         return apiError(c, 500, 'Codebase created but not found');
+      }
+
+      // Auto-add creator as owner of the project
+      const { userId } = getUserId(c);
+      if (userId) {
+        try {
+          await usersDb.createProjectMember(userId, result.codebaseId, 'owner');
+        } catch {
+          // Ignore duplicate membership (e.g., project already existed)
+        }
       }
 
       return c.json(codebase, result.alreadyExisted ? 200 : 201);

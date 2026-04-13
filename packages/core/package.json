@@ -9,6 +9,7 @@
     "./types": "./src/types/index.ts",
     "./db": "./src/db/index.ts",
     "./db/*": "./src/db/*.ts",
+    "./auth": "./src/auth/index.ts",
     "./clients": "./src/clients/index.ts",
     "./operations": "./src/operations/index.ts",
     "./operations/*": "./src/operations/*.ts",
@@ -34,6 +35,7 @@
     "@archon/paths": "workspace:*",
     "@archon/workflows": "workspace:*",
     "@openai/codex-sdk": "^0.116.0",
+    "jose": "^5.9.6",
     "pg": "^8.11.0",
     "zod": "^3"
   },

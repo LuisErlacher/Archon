@@ -1,8 +1,9 @@
-import { NavLink, Link } from 'react-router';
+import { NavLink, Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutDashboard, MessageSquare, Workflow, Settings } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Workflow, Settings, LogOut } from 'lucide-react';
 import { listWorkflowRuns, getUpdateCheck } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const tabs = [
   { to: '/chat', end: false, icon: MessageSquare, label: 'Chat' },
@@ -12,6 +13,9 @@ const tabs = [
 ] as const;
 
 export function TopNav(): React.ReactElement {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
   const { data: runningRuns } = useQuery({
     queryKey: ['workflowRuns', { status: 'running' }],
     queryFn: () => listWorkflowRuns({ status: 'running', limit: 1 }),
@@ -58,7 +62,25 @@ export function TopNav(): React.ReactElement {
           )}
         </NavLink>
       ))}
-      <span className="ml-auto text-xs text-text-secondary">
+      <div className="ml-auto flex items-center gap-3">
+        {user && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-secondary">{user.username}</span>
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
+              className="flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+      <span className="text-xs text-text-secondary ml-3">
         v{import.meta.env.VITE_APP_VERSION as string}
         {updateCheck?.updateAvailable && updateCheck.releaseUrl && (
           <a

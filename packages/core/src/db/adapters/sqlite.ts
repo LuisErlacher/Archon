@@ -216,6 +216,23 @@ export class SqliteAdapter implements IDatabase {
       getLog().warn({ err: e as Error }, 'db.sqlite_migration_session_columns_failed');
     }
 
+    // Conversations: user_id (multi-user auth)
+    try {
+      const convCols2 = this.db
+        .prepare("PRAGMA table_info('remote_agent_conversations')")
+        .all() as { name: string }[];
+      const convColNames2 = new Set(convCols2.map(c => c.name));
+      if (!convColNames2.has('user_id')) {
+        this.db.run('ALTER TABLE remote_agent_conversations ADD COLUMN user_id TEXT');
+      }
+      // Create index after column exists (can't be in createSchema for existing DBs)
+      this.db.run(
+        'CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON remote_agent_conversations(user_id) WHERE deleted_at IS NULL'
+      );
+    } catch (e: unknown) {
+      getLog().warn({ err: e as Error }, 'db.sqlite_migration_conversations_user_id_failed');
+    }
+
     // Codebases columns (added in #983 — env-leak gate consent bit)
     try {
       const cbCols = this.db.prepare("PRAGMA table_info('remote_agent_codebases')").all() as {
@@ -281,6 +298,7 @@ export class SqliteAdapter implements IDatabase {
         title TEXT,
         deleted_at TEXT,
         hidden INTEGER DEFAULT 0,
+        user_id TEXT REFERENCES remote_agent_users(id) ON DELETE SET NULL,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         last_activity_at TEXT DEFAULT (datetime('now')),
@@ -353,6 +371,25 @@ export class SqliteAdapter implements IDatabase {
         created_at TEXT DEFAULT (datetime('now'))
       );
 
+      -- Users table
+      CREATE TABLE IF NOT EXISTS remote_agent_users (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        display_name TEXT,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      -- Project members table
+      CREATE TABLE IF NOT EXISTS remote_agent_project_members (
+        user_id TEXT NOT NULL REFERENCES remote_agent_users(id) ON DELETE CASCADE,
+        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'member',
+        PRIMARY KEY (user_id, codebase_id)
+      );
+
       -- Messages table (conversation history for Web UI)
       CREATE TABLE IF NOT EXISTS remote_agent_messages (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -382,6 +419,9 @@ export class SqliteAdapter implements IDatabase {
       CREATE INDEX IF NOT EXISTS idx_conversations_isolation_env_id ON remote_agent_conversations(isolation_env_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_codebase ON remote_agent_sessions(codebase_id);
       CREATE INDEX IF NOT EXISTS idx_isolation_env_status ON remote_agent_isolation_environments(status);
+
+      CREATE INDEX IF NOT EXISTS idx_project_members_codebase ON remote_agent_project_members(codebase_id);
+      CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON remote_agent_project_members(user_id);
 
       -- From PG migration 009: staleness detection for running workflows
       CREATE INDEX IF NOT EXISTS idx_workflow_runs_last_activity

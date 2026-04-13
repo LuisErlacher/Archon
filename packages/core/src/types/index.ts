@@ -63,6 +63,22 @@ export interface Codebase {
   updated_at: Date;
 }
 
+export interface User {
+  id: string;
+  username: string;
+  password_hash: string;
+  display_name: string | null;
+  role: 'admin' | 'user';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectMember {
+  user_id: string;
+  codebase_id: string;
+  role: 'owner' | 'member';
+}
+
 export const sessionMetadataSchema = z
   .object({
     lastCommand: z.string().optional(),

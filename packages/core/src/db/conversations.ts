@@ -219,6 +219,40 @@ export async function listConversations(
   return result.rows;
 }
 
+export async function listConversationsForUser(
+  userId: string,
+  limit = 50,
+  platformType?: string,
+  codebaseId?: string,
+  excludeEmpty = false
+): Promise<readonly Conversation[]> {
+  const params: unknown[] = [userId];
+  let sql =
+    'SELECT * FROM remote_agent_conversations WHERE deleted_at IS NULL AND (hidden IS NULL OR hidden = false) AND user_id = $1';
+
+  if (excludeEmpty) {
+    sql +=
+      ' AND (title IS NOT NULL OR EXISTS (SELECT 1 FROM remote_agent_messages WHERE conversation_id = remote_agent_conversations.id LIMIT 1))';
+  }
+
+  if (platformType) {
+    params.push(platformType);
+    sql += ` AND platform_type = $${String(params.length)}`;
+  }
+
+  if (codebaseId) {
+    params.push(codebaseId);
+    sql += ` AND codebase_id = $${String(params.length)}`;
+  }
+
+  sql += ' ORDER BY last_activity_at DESC NULLS LAST';
+  params.push(limit);
+  sql += ` LIMIT $${String(params.length)}`;
+
+  const result = await pool.query<Conversation>(sql, params);
+  return result.rows;
+}
+
 /**
  * Update last_activity_at for staleness tracking
  */
@@ -233,6 +267,14 @@ export async function touchConversation(id: string): Promise<void> {
 /**
  * Update conversation title
  */
+export async function setConversationUserId(id: string, userId: string): Promise<void> {
+  const dialect = getDialect();
+  await pool.query(
+    `UPDATE remote_agent_conversations SET user_id = $1, updated_at = ${dialect.now()} WHERE id = $2`,
+    [userId, id]
+  );
+}
+
 export async function updateConversationTitle(id: string, title: string): Promise<void> {
   const dialect = getDialect();
   const result = await pool.query(

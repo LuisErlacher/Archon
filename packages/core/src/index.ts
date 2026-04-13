@@ -18,6 +18,8 @@ export {
   type HandleMessageContext,
   type AttachedFile,
   type Codebase,
+  type User,
+  type ProjectMember,
   type Session,
   type CommandResult,
   type IPlatformAdapter,

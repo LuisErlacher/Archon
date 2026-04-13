@@ -66,6 +66,7 @@ import { chatCommand } from './commands/chat';
 import { setupCommand } from './commands/setup';
 import { validateWorkflowsCommand, validateCommandsCommand } from './commands/validate';
 import { serveCommand } from './commands/serve';
+import { loginCommand } from './commands/login';
 import { closeDatabase } from '@archon/core';
 import {
   setLogLevel,
@@ -104,6 +105,7 @@ Commands:
   isolation cleanup --merged Remove environments with branches merged into main
   continue <branch> [msg]    Continue work on an existing worktree with prior context
   complete <branch> [...]    Complete branch lifecycle (remove worktree + branches)
+  login                      Log in to an Archon server
   serve                      Start the web UI server (downloads web UI on first run)
   validate workflows [name]  Validate workflow definitions and their references
   validate commands [name]   Validate command files
@@ -207,6 +209,7 @@ async function main(): Promise<number> {
         'allow-env-keys': { type: 'boolean' },
         port: { type: 'string' },
         'download-only': { type: 'boolean' },
+        'server-url': { type: 'string' },
       },
       allowPositionals: true,
       strict: false, // Allow unknown flags to pass through
@@ -241,7 +244,7 @@ async function main(): Promise<number> {
   const subcommand = positionals[1];
 
   // Commands that don't require git repo validation
-  const noGitCommands = ['version', 'help', 'setup', 'chat', 'continue', 'serve'];
+  const noGitCommands = ['version', 'help', 'setup', 'chat', 'continue', 'serve', 'login'];
   const requiresGitRepo = !noGitCommands.includes(command ?? '');
 
   try {
@@ -546,6 +549,11 @@ async function main(): Promise<number> {
           noContext: noContextFlag,
         });
         break;
+      }
+
+      case 'login': {
+        const serverUrl = values['server-url'] as string | undefined;
+        return await loginCommand({ serverUrl });
       }
 
       case 'serve': {
