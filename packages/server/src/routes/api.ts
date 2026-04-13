@@ -83,6 +83,7 @@ import {
   workflowRunByWorkerResponseSchema,
   cancelWorkflowRunResponseSchema,
   workflowRunActionResponseSchema,
+  workflowRunStatusSchema,
   dashboardRunsResponseSchema,
   runWorkflowBodySchema,
   dashboardRunsQuerySchema,
@@ -1884,17 +1885,9 @@ export function registerApiRoutes(
   registerOpenApiRoute(getDashboardRunsRoute, async c => {
     try {
       const rawStatus = c.req.query('status');
-      const dashboardValidStatuses = [
-        'pending',
-        'running',
-        'completed',
-        'failed',
-        'cancelled',
-        'paused',
-      ] as const;
-      type DashboardRunStatus = (typeof dashboardValidStatuses)[number];
+      type DashboardRunStatus = (typeof workflowRunStatusSchema)['_type'];
       const status: DashboardRunStatus | undefined =
-        rawStatus && (dashboardValidStatuses as readonly string[]).includes(rawStatus)
+        rawStatus && (workflowRunStatusSchema.options as readonly string[]).includes(rawStatus)
           ? (rawStatus as DashboardRunStatus)
           : undefined;
       const codebaseId = c.req.query('codebaseId') ?? undefined;
@@ -2216,17 +2209,9 @@ export function registerApiRoutes(
     try {
       const conversationId = c.req.query('conversationId') ?? undefined;
       const rawStatus = c.req.query('status');
-      const validStatuses = [
-        'pending',
-        'running',
-        'completed',
-        'failed',
-        'cancelled',
-        'paused',
-      ] as const;
-      type WorkflowRunStatus = (typeof validStatuses)[number];
+      type WorkflowRunStatus = (typeof workflowRunStatusSchema)['_type'];
       const status: WorkflowRunStatus | undefined =
-        rawStatus && (validStatuses as readonly string[]).includes(rawStatus)
+        rawStatus && (workflowRunStatusSchema.options as readonly string[]).includes(rawStatus)
           ? (rawStatus as WorkflowRunStatus)
           : undefined;
       const codebaseId = c.req.query('codebaseId') ?? undefined;
