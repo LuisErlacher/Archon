@@ -88,6 +88,12 @@ function createMockStore(): IWorkflowStore {
     cancelWorkflowRun: mock(() => Promise.resolve()),
     createWorkflowEvent: mock(() => Promise.resolve()),
     getCompletedDagNodeOutputs: mock(() => Promise.resolve(new Map<string, string>())),
+    upsertNodeState: mock(() => Promise.resolve()),
+    getNodeState: mock(() => Promise.resolve(null)),
+    getNodeStates: mock(() => Promise.resolve([])),
+    getValidatedNodeOutputs: mock(() => Promise.resolve(new Map<string, string>())),
+    createTestResult: mock(() => Promise.resolve()),
+    getTestResults: mock(() => Promise.resolve([])),
     getCodebase: mock(() => Promise.resolve(null)),
     getCodebaseEnvVars: mock(() => Promise.resolve({})),
   };
@@ -635,15 +641,11 @@ describe('substituteNodeOutputRefs', () => {
     expect(substituteNodeOutputRefs('Result: $a.output', outputs)).toBe('Result: hello');
   });
 
-  it('unknown node ref resolves to empty string and logs a warning', () => {
-    mockLogFn.mockClear();
+  it('unknown node ref throws in non-bash context', () => {
     const outputs = new Map<string, NodeOutput>();
-    expect(substituteNodeOutputRefs('Result: $missing.output', outputs)).toBe('Result: ');
-    const warnCalls = mockLogFn.mock.calls.filter(
-      (call: unknown[]) => call[1] === 'dag_node_output_ref_unknown_node'
+    expect(() => substituteNodeOutputRefs('Result: $missing.output', outputs)).toThrow(
+      /Node 'missing' referenced in output substitution but not found/
     );
-    expect(warnCalls.length).toBe(1);
-    expect(warnCalls[0][0]).toEqual(expect.objectContaining({ nodeId: 'missing' }));
   });
 
   it('dot notation extracts JSON field', () => {
@@ -651,9 +653,11 @@ describe('substituteNodeOutputRefs', () => {
     expect(substituteNodeOutputRefs('Fix $a.output.type issue', outputs)).toBe('Fix BUG issue');
   });
 
-  it('dot notation on invalid JSON returns empty string', () => {
+  it('dot notation on invalid JSON throws in non-bash context', () => {
     const outputs = new Map([['a', makeOutput('completed', 'not-json')]]);
-    expect(substituteNodeOutputRefs('$a.output.field', outputs)).toBe('');
+    expect(() => substituteNodeOutputRefs('$a.output.field', outputs)).toThrow(
+      /Node 'a' output is not valid JSON/
+    );
   });
 });
 

@@ -25,6 +25,27 @@ export {
 } from './hooks';
 export type { WorkflowHookEvent, WorkflowHookMatcher, WorkflowNodeHooks } from './hooks';
 
+// Gate configuration
+export {
+  gateSeveritySchema,
+  gateTypeSchema,
+  testResultsSchema,
+  testFailureSchema,
+  gateEvidenceSchema,
+  gateResultSchema,
+  qualityGateConfigSchema,
+  nodeGatesConfigSchema,
+} from './gate';
+export type {
+  GateSeverity,
+  GateType,
+  TestResults,
+  GateEvidence,
+  GateResult,
+  QualityGateConfig,
+  NodeGatesConfig,
+} from './gate';
+
 // DAG node types
 export {
   triggerRuleSchema,

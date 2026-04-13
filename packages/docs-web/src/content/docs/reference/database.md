@@ -125,7 +125,7 @@ psql $DATABASE_URL -c "\dt"
 
 ## Schema Overview
 
-The database has 10 tables, all prefixed with `remote_agent_`:
+The database has 12 tables, all prefixed with `remote_agent_`:
 
 1. **`remote_agent_codebases`** - Repository metadata
    - Commands stored as JSONB: `{command_name: {path, description}}`
@@ -174,6 +174,16 @@ The database has 10 tables, all prefixed with `remote_agent_`:
     - Junction table: user-codebase, roles: `owner`, `member`
     - Admins see all codebases; members see only their assigned codebases
 
+11. **`remote_agent_node_states`** - Per-node execution state
+    - Tracks status, output, and gate results per DAG node
+    - Enables validated resume (skip completed nodes)
+    - Upsert on `(workflow_run_id, node_id)` composite key
+
+12. **`remote_agent_test_results`** - Parsed test suite results
+    - Linked to node states via foreign key
+    - Stores test counts (total, passed, failed, skipped) and failure details
+    - Gate evidence for quality gate verification
+
 ## Migration List
 
 | Migration | Description |
@@ -201,3 +211,4 @@ The database has 10 tables, all prefixed with `remote_agent_`:
 | `020_codebase_env_vars.sql` | Per-project environment variables |
 | `021_allow_env_keys.sql` | Per-codebase env-leak gate consent bit |
 | `022_multi_user_auth.sql` | Multi-user auth: users table, project members, conversation user_id |
+| `023_node_states.sql` | Node states and test results tables for quality gates |

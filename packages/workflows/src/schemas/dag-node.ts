@@ -14,6 +14,7 @@ import { z } from '@hono/zod-openapi';
 import { stepRetryConfigSchema } from './retry';
 import { loopNodeConfigSchema } from './loop';
 import { workflowNodeHooksSchema } from './hooks';
+import { nodeGatesConfigSchema } from './gate';
 import { isValidCommandName } from '../command-validation';
 import { isModelCompatible } from '../model-validation';
 
@@ -146,6 +147,7 @@ export type DagNodeBase = z.infer<typeof dagNodeBaseSchema>;
 
 export const commandNodeSchema = dagNodeBaseSchema.extend({
   command: z.string(),
+  gates: nodeGatesConfigSchema.optional(),
 });
 
 /** DAG node that runs a named command from .archon/commands/ */
@@ -160,6 +162,7 @@ export type CommandNode = z.infer<typeof commandNodeSchema> & {
 
 export const promptNodeSchema = dagNodeBaseSchema.extend({
   prompt: z.string(),
+  gates: nodeGatesConfigSchema.optional(),
 });
 
 /** DAG node with an inline prompt (no command file) */
@@ -220,6 +223,7 @@ export type ScriptNode = z.infer<typeof scriptNodeSchema> & {
  */
 export const loopNodeSchema = dagNodeBaseSchema.extend({
   loop: loopNodeConfigSchema,
+  gates: nodeGatesConfigSchema.optional(),
 });
 
 /** DAG node that runs an AI prompt in a loop until a completion condition is met */
@@ -354,6 +358,8 @@ export const dagNodeSchema = dagNodeBaseSchema
     deps: z.array(z.string().min(1, 'each dep must be a non-empty string')).optional(),
     // Bash/Script shared
     timeout: z.number().optional(),
+    // Quality gates (command, prompt, loop nodes only — ignored on bash/script)
+    gates: nodeGatesConfigSchema.optional(),
   })
   .superRefine((data, ctx) => {
     const id = data.id.trim();
@@ -535,11 +541,28 @@ export const dagNodeSchema = dagNodeBaseSchema
       ...(data.sandbox !== undefined ? { sandbox: data.sandbox } : {}),
     };
 
+    // Gates — applicable to command, prompt, and loop nodes (not bash/script)
+    const gatesField = {
+      ...(data.gates !== undefined ? { gates: data.gates } : {}),
+    };
+
     if (data.command !== undefined && data.command.trim().length > 0) {
-      return { ...base, ...shared, ...aiOnly, command: data.command.trim() } as CommandNode;
+      return {
+        ...base,
+        ...shared,
+        ...aiOnly,
+        ...gatesField,
+        command: data.command.trim(),
+      } as CommandNode;
     }
     if (data.prompt !== undefined && data.prompt.trim().length > 0) {
-      return { ...base, ...shared, ...aiOnly, prompt: data.prompt.trim() } as PromptNode;
+      return {
+        ...base,
+        ...shared,
+        ...aiOnly,
+        ...gatesField,
+        prompt: data.prompt.trim(),
+      } as PromptNode;
     }
     if (data.bash !== undefined && data.bash.trim().length > 0) {
       return {
@@ -569,7 +592,7 @@ export const dagNodeSchema = dagNodeBaseSchema
     }
     // loop — guaranteed by superRefine to be defined at this point
     if (!data.loop) throw new Error('unreachable: loop must be defined after superRefine');
-    return { ...base, loop: data.loop } as LoopNode;
+    return { ...base, ...gatesField, loop: data.loop } as LoopNode;
   })
   .openapi('DagNode');
 

@@ -1,0 +1,169 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - link "A Archon" [ref=e5] [cursor=pointer]:
+      - /url: /chat
+      - generic [ref=e7]: A
+      - generic [ref=e8]: Archon
+    - link "Chat" [ref=e9] [cursor=pointer]:
+      - /url: /chat
+      - img [ref=e10]
+      - text: Chat
+    - link "Dashboard" [active] [ref=e12] [cursor=pointer]:
+      - /url: /dashboard
+      - img [ref=e13]
+      - text: Dashboard
+    - link "Workflows" [ref=e18] [cursor=pointer]:
+      - /url: /workflows
+      - img [ref=e19]
+      - text: Workflows
+    - link "Settings" [ref=e23] [cursor=pointer]:
+      - /url: /settings
+      - img [ref=e24]
+      - text: Settings
+    - generic [ref=e27]: v0.3.5
+  - main [ref=e28]:
+    - generic [ref=e1529]:
+      - generic [ref=e1530]:
+        - heading "Mission Control" [level=1] [ref=e1531]
+        - generic [ref=e1532]: Last updated 08:24:21
+      - generic [ref=e1533]:
+        - generic [ref=e1534]:
+          - 'button "All: 5" [ref=e1535]'
+          - 'button "Running: 0" [ref=e1536]'
+          - 'button "Paused: 0" [ref=e1537]'
+          - 'button "Completed: 4" [ref=e1538]'
+          - 'button "Failed: 1" [ref=e1539]'
+          - 'button "Cancelled: 0" [ref=e1540]'
+          - 'button "Pending: 0" [ref=e1541]'
+        - generic [ref=e1542]:
+          - combobox [ref=e1543]:
+            - option "All Projects" [selected]
+            - option "coleam00/Archon"
+          - combobox [ref=e1544]:
+            - option "Today"
+            - option "Last 7 days"
+            - option "Last 30 days"
+            - option "All time" [selected]
+          - generic [ref=e1545]:
+            - img [ref=e1546]
+            - textbox "Search workflows..." [ref=e1549]
+          - generic [ref=e1550]: "Capacity: 0/10 active"
+      - generic [ref=e1551]:
+        - heading "History" [level=2] [ref=e1552]
+        - table [ref=e1554]:
+          - rowgroup [ref=e1555]:
+            - row "Status Workflow Project Source Duration Started Actions" [ref=e1556]:
+              - columnheader "Status" [ref=e1557]
+              - columnheader "Workflow" [ref=e1558]
+              - columnheader "Project" [ref=e1559]
+              - columnheader "Source" [ref=e1560]
+              - columnheader "Duration" [ref=e1561]
+              - columnheader "Started" [ref=e1562]
+              - columnheader "Actions" [ref=e1563]
+          - rowgroup [ref=e1564]:
+            - row [ref=e1565]:
+              - cell [ref=e1566]
+              - cell [ref=e1568]:
+                - link "archon-fix-github-issue" [ref=e1569] [cursor=pointer]:
+                  - /url: /workflows/runs/832f7414d75821524eeccd36979e3d0a
+                - paragraph [ref=e1570]: "Fix issue #6 - Add multi-user authentication with JWT and project-level scoping. Minimal auth system: login/password, JWT tokens, users assigned to projects. Key implementation: 1. New migration tables (both SQLite and PostgreSQL): - remote_agent_users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, display_name TEXT, role TEXT NOT NULL DEFAULT 'user' -- 'admin'|'user', created_at TEXT NOT NULL, updated_at TEXT NOT NULL) - remote_agent_project_members (user_id TEXT NOT NULL, codebase_id TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member' -- 'owner'|'member', PRIMARY KEY (user_id, codebase_id)) 2. Auth utilities in packages/core/src/auth/: - password.ts: hashPassword(plain) using Bun's built-in bcrypt (Bun.password.hash/verify), verifyPassword(plain, hash) - jwt.ts: generateToken(userId, role), verifyToken(token), refreshToken(token). Use jose library for JWT. Access token: 1h expiry. Refresh token: 7d. - middleware.ts: Hono middleware that extracts Bearer token, verifies, sets c.set('userId', ...). Skip auth for: /api/health, /api/auth/login, /api/auth/register, /webhooks/* 3. Auth routes in packages/server/src/routes/auth.ts: - POST /api/auth/register (username, password, displayName) -> { user, accessToken, refreshToken } - POST /api/auth/login (username, password) -> { user, accessToken, refreshToken } - POST /api/auth/refresh (refreshToken) -> { accessToken, refreshToken } - GET /api/auth/me -> current user info - First registered user auto-gets 'admin' role 4. Project scoping: - Add user_id column to remote_agent_conversations table - API queries filter by user's project memberships (JOIN project_members) - Admin can see all projects - Codebase creation auto-adds creator as owner 5. Web UI changes (packages/web/): - Login page at /login route - Auth context provider (React context with token storage in localStorage) - API client adds Authorization header - Redirect to /login if 401 - User menu in top bar (username, logout) 6. CLI support: - archon login command (prompts username/password, stores token in ~/.archon/auth.json) - CLI commands send Authorization header to server IMPORTANT: Do NOT scope every single table by user_id. Scope by project membership (user has access to projects, projects have codebases/conversations/workflows). API keys for LLM providers stay at server level (shared). Follow CLAUDE.md strictly. Use Bun.password for hashing (built-in, no external bcrypt needed). Run bun run validate."
+              - cell "coleam00/Archon" [ref=e1571]
+              - cell "cli" [ref=e1572]:
+                - generic [ref=e1573]:
+                  - img [ref=e1574]
+                  - text: cli
+              - cell "136.7m" [ref=e1576]
+              - cell "12 de abr., 21:03" [ref=e1577]
+              - cell "View Logs" [ref=e1578]:
+                - generic [ref=e1579]:
+                  - link "View Logs" [ref=e1580] [cursor=pointer]:
+                    - /url: /workflows/runs/832f7414d75821524eeccd36979e3d0a
+                  - button "Delete run" [ref=e1581]:
+                    - img [ref=e1582]
+            - row [ref=e1585]:
+              - cell [ref=e1586]
+              - cell [ref=e1588]:
+                - link "archon-fix-github-issue" [ref=e1589] [cursor=pointer]:
+                  - /url: /workflows/runs/ce4945a5f0f97fe1e326aba0694f0cfc
+                - paragraph [ref=e1590]: "Fix issue #5 - Implement hybrid workflow storage: DB + filesystem. Workflows created via Web UI are stored in database, while filesystem-based workflows (defaults + repo-specific YAML) continue working as-is. Both sources merge in discovery. Key implementation: 1. New migration: CREATE TABLE remote_agent_workflow_definitions (id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, definition TEXT NOT NULL -- JSON of parsed DAG structure, source TEXT NOT NULL DEFAULT 'user' -- 'user'|'imported', codebase_id TEXT -- nullable for global, created_at TEXT NOT NULL, updated_at TEXT NOT NULL). Support both SQLite and PostgreSQL using existing adapter pattern. 2. Add to SQLite init schema (packages/core/src/db/adapters/sqlite.ts) and PostgreSQL migration file. 3. Create DB operations in packages/core/src/db/workflow-definitions.ts: createWorkflowDefinition, getWorkflowDefinition, listWorkflowDefinitions, updateWorkflowDefinition, deleteWorkflowDefinition. 4. Refactor workflow-discovery.ts: add new discovery layer that queries DB AFTER filesystem layers. Merge order: bundled < global < repo-specific < DB (DB workflows with same name override filesystem). Add discoverDbWorkflows() function. 5. Update API routes in packages/server/src/routes/api.ts: Change PUT /api/workflows/:name to save to DB instead of filesystem. Change DELETE to remove from DB. GET continues merging both sources. Add POST /api/workflows/import (YAML text -> parse -> validate -> save to DB). 6. Add Zod schemas in packages/server/src/routes/schemas/workflow.schemas.ts for the new endpoints. 7. Workflow builder (packages/web/) already saves via PUT API - it will automatically use DB storage after backend change. 8. Add export endpoint: GET /api/workflows/:name/export -> returns YAML text for download. IMPORTANT: Do NOT remove filesystem workflow support. This is ADDITIVE. The IWorkflowStore interface is for workflow RUNS (execution state), not definitions - don't confuse them. Follow CLAUDE.md strictly. Run bun run validate."
+              - cell "coleam00/Archon" [ref=e1591]
+              - cell "cli" [ref=e1592]:
+                - generic [ref=e1593]:
+                  - img [ref=e1594]
+                  - text: cli
+              - cell "131.4m" [ref=e1596]
+              - cell "12 de abr., 21:03" [ref=e1597]
+              - cell "View Logs" [ref=e1598]:
+                - generic [ref=e1599]:
+                  - link "View Logs" [ref=e1600] [cursor=pointer]:
+                    - /url: /workflows/runs/ce4945a5f0f97fe1e326aba0694f0cfc
+                  - button "Delete run" [ref=e1601]:
+                    - img [ref=e1602]
+            - row [ref=e1605]:
+              - cell [ref=e1606]
+              - cell [ref=e1608]:
+                - link "archon-fix-github-issue" [ref=e1609] [cursor=pointer]:
+                  - /url: /workflows/runs/d49653b39d2f09683122f259744e3955
+                - paragraph [ref=e1610]: "Fix issue #4 - Add PiAiProvider implementing IAssistantClient using @mariozechner/pi-ai and @mariozechner/pi-agent-core (published on npm v0.66.1). This adds 15+ LLM providers (Anthropic, OpenAI, Google, Mistral, Bedrock, Vertex, Groq, xAI, Ollama, vLLM) via unified interface. Key implementation: 1. Install: bun add @mariozechner/pi-ai @mariozechner/pi-agent-core 2. Create PiAiProvider in packages/core/src/clients/pi-ai.ts implementing IAssistantClient 3. Map pi-agent-core EventStream<AgentEvent> to AsyncGenerator<MessageChunk> (the Archon streaming format) 4. Implement 7 tools as AgentTool<TParameters> with TypeBox schemas: read, edit, write, bash, grep, find, ls - using the existing BashOperations pluggable interface from pi-agent-core 5. Register in factory.ts switch: case 'pi-ai' => PiAiProvider 6. Config schema in .archon/config.yaml: assistants.pi-ai.provider (anthropic/openai/google/etc), assistants.pi-ai.model 7. Workflow support: provider: pi-ai in YAML nodes with model validation at load time 8. Tests mirroring claude.test.ts patterns with mock.module isolation IMPORTANT: pi-ai runs IN-PROCESS (library), not as subprocess like Claude/Codex SDKs. The Agent class from pi-agent-core provides: Agent.prompt(), subscribe() for events, beforeToolCall/afterToolCall hooks, convertToLlm for message bridging. Use Agent class for high-level API. The IAssistantClient interface requires: sendQuery(prompt, cwd, resumeSessionId?, options?) returning AsyncGenerator<MessageChunk> and getType() returning string. MessageChunk types: assistant, system, thinking, result, rate_limit, tool, tool_result, workflow_dispatch. Follow CLAUDE.md strictly. Run bun run validate before creating PR."
+              - cell "coleam00/Archon" [ref=e1611]
+              - cell "cli" [ref=e1612]:
+                - generic [ref=e1613]:
+                  - img [ref=e1614]
+                  - text: cli
+              - cell "125.8m" [ref=e1616]
+              - cell "12 de abr., 21:03" [ref=e1617]
+              - cell "View Logs" [ref=e1618]:
+                - generic [ref=e1619]:
+                  - link "View Logs" [ref=e1620] [cursor=pointer]:
+                    - /url: /workflows/runs/d49653b39d2f09683122f259744e3955
+                  - button "Delete run" [ref=e1621]:
+                    - img [ref=e1622]
+            - row [ref=e1625]:
+              - cell [ref=e1626]
+              - cell [ref=e1628]:
+                - link "archon-idea-to-pr" [ref=e1629] [cursor=pointer]:
+                  - /url: /workflows/runs/34353bad590c84f9aeebe24399794173
+                - paragraph [ref=e1630]: "Implement a Quality Gate Engine and Node State Store to create a trust boundary between AI agents and workflow state. The core problem: agents can corrupt workflow state by hallucinating (faking test completion, returning malformed JSON, saying COMPLETE without doing work). The solution has 6 components: 1. QUALITY GATE ENGINE (packages/workflows/src/gates/): - New QualityGate interface with: id, name, verify function, severity (p0/p1/p2), maxRetries - GateResult with evidence (stdout, exitCode, parsedResults with passed/failed/skipped counts) - Built-in gate types: test-suite (parses vitest/jest output), typecheck (bun run type-check), lint (bun run lint) - P0/P1 gates BLOCK progression. P2 gates warn but allow continuation. - Gate engine executes commands ITSELF (not trusting agent claims) - Test result parser that counts actual passed/failed/skipped from stdout 2. NODE STATE STORE (new DB table + refactor): - New table remote_agent_node_states: id, workflow_run_id, node_id, status (pending/running/completed/failed/skipped), output (validated), output_validated boolean, gate_results JSON, attempt_count, timestamps - New table remote_agent_test_results: id, node_state_id, suite_name, total, passed, failed, skipped, failures JSON, stdout, exit_code - Refactor dag-executor.ts to persist node state in this table instead of only emitting events - Resume reads from node_states (explicit validated state) instead of re-parsing events 3. OUTPUT VALIDATION LAYER (in dag-executor.ts): - After capturing agent output, validate against output_format schema using Zod - If output_format is set and agent returns non-JSON: FAIL the node (not warning-only like today for Codex) - If JSON parses but schema validation fails: FAIL the node with specific error - Only store validated output in node_states table - Fix silent empty-string substitution in substituteNodeOutputRefs - throw on parse failure instead 4. LOOP GATES (new field in loop node schema): - Add optional gates field to loop node schema in packages/workflows/src/schemas/dag-node.ts - When agent signals completion (COMPLETE), gates run BEFORE accepting the signal - If any p0 gate fails: reject completion, inject gate feedback into next iteration prompt - After maxRetries gate failures: escalate to human with real evidence (test stdout) - Existing until_bash continues to work but gates are the recommended approach 5. API ENDPOINTS (packages/server/src/routes/): - POST /api/workflow-runs/:runId/nodes/:nodeId/complete - validate and store output - POST /api/workflow-runs/:runId/nodes/:nodeId/gate-result - store gate evidence - GET /api/workflow-runs/:runId/summary - aggregate node states + gates + test results - These are called internally by the gate engine and consumed by the dashboard 6. WORKFLOW EVENT IMPROVEMENTS: - New SSE event types: gate_started, gate_passed, gate_failed, gate_blocked - node_completed events now include gate_results array - Dashboard can show real test results per node, not just agent claims IMPORTANT CONSTRAINTS: - Follow CLAUDE.md strictly: Zod schemas, strict TypeScript, no any types - Workflows stay in YAML (filesystem) - this is about execution STATE not definitions - Commands stay in .archon/commands/ - unchanged - Claude Code SDK / Codex SDK unchanged - All new code needs tests (mock.module isolation rules apply) - Run bun run validate before creating PR - Use existing patterns: IWorkflowStore interface, WorkflowDeps injection, event-emitter pattern - Database must support both SQLite and PostgreSQL (use existing adapter pattern)"
+              - cell "coleam00/Archon" [ref=e1631]
+              - cell "cli" [ref=e1632]:
+                - generic [ref=e1633]:
+                  - img [ref=e1634]
+                  - text: cli
+              - cell "173.8m" [ref=e1636]
+              - cell "12 de abr., 20:46" [ref=e1637]
+              - cell "View Logs" [ref=e1638]:
+                - generic [ref=e1639]:
+                  - link "View Logs" [ref=e1640] [cursor=pointer]:
+                    - /url: /workflows/runs/34353bad590c84f9aeebe24399794173
+                  - button "Delete run" [ref=e1641]:
+                    - img [ref=e1642]
+            - row [ref=e1645]:
+              - cell [ref=e1646]
+              - cell [ref=e1648]:
+                - link "archon-idea-to-pr" [ref=e1649] [cursor=pointer]:
+                  - /url: /workflows/runs/64c9ea951c0a57fb0555f691f1a21ade
+                - paragraph [ref=e1650]: "Implement a Quality Gate Engine and Node State Store to create a trust boundary between AI agents and workflow state. The core problem: agents can corrupt workflow state by hallucinating (faking test completion, returning malformed JSON, saying COMPLETE without doing work). The solution has 6 components: 1. QUALITY GATE ENGINE (packages/workflows/src/gates/): - New QualityGate interface with: id, name, verify function, severity (p0/p1/p2), maxRetries - GateResult with evidence (stdout, exitCode, parsedResults with passed/failed/skipped counts) - Built-in gate types: test-suite (parses vitest/jest output), typecheck (bun run type-check), lint (bun run lint) - P0/P1 gates BLOCK progression. P2 gates warn but allow continuation. - Gate engine executes commands ITSELF (not trusting agent claims) - Test result parser that counts actual passed/failed/skipped from stdout 2. NODE STATE STORE (new DB table + refactor): - New table remote_agent_node_states: id, workflow_run_id, node_id, status (pending/running/completed/failed/skipped), output (validated), output_validated boolean, gate_results JSON, attempt_count, timestamps - New table remote_agent_test_results: id, node_state_id, suite_name, total, passed, failed, skipped, failures JSON, stdout, exit_code - Refactor dag-executor.ts to persist node state in this table instead of only emitting events - Resume reads from node_states (explicit validated state) instead of re-parsing events 3. OUTPUT VALIDATION LAYER (in dag-executor.ts): - After capturing agent output, validate against output_format schema using Zod - If output_format is set and agent returns non-JSON: FAIL the node (not warning-only like today for Codex) - If JSON parses but schema validation fails: FAIL the node with specific error - Only store validated output in node_states table - Fix silent empty-string substitution in substituteNodeOutputRefs - throw on parse failure instead 4. LOOP GATES (new field in loop node schema): - Add optional gates field to loop node schema in packages/workflows/src/schemas/dag-node.ts - When agent signals completion (COMPLETE), gates run BEFORE accepting the signal - If any p0 gate fails: reject completion, inject gate feedback into next iteration prompt - After maxRetries gate failures: escalate to human with real evidence (test stdout) - Existing until_bash continues to work but gates are the recommended approach 5. API ENDPOINTS (packages/server/src/routes/): - POST /api/workflow-runs/:runId/nodes/:nodeId/complete - validate and store output - POST /api/workflow-runs/:runId/nodes/:nodeId/gate-result - store gate evidence - GET /api/workflow-runs/:runId/summary - aggregate node states + gates + test results - These are called internally by the gate engine and consumed by the dashboard 6. WORKFLOW EVENT IMPROVEMENTS: - New SSE event types: gate_started, gate_passed, gate_failed, gate_blocked - node_completed events now include gate_results array - Dashboard can show real test results per node, not just agent claims IMPORTANT CONSTRAINTS: - Follow CLAUDE.md strictly: Zod schemas, strict TypeScript, no any types - Workflows stay in YAML (filesystem) - this is about execution STATE not definitions - Commands stay in .archon/commands/ - unchanged - Claude Code SDK / Codex SDK unchanged - All new code needs tests (mock.module isolation rules apply) - Run bun run validate before creating PR - Use existing patterns: IWorkflowStore interface, WorkflowDeps injection, event-emitter pattern - Database must support both SQLite and PostgreSQL (use existing adapter pattern)"
+              - cell "coleam00/Archon" [ref=e1651]
+              - cell "cli" [ref=e1652]:
+                - generic [ref=e1653]:
+                  - img [ref=e1654]
+                  - text: cli
+              - cell "5.5m" [ref=e1656]
+              - cell "12 de abr., 20:35" [ref=e1657]
+              - cell "View Logs" [ref=e1658]:
+                - generic [ref=e1659]:
+                  - link "View Logs" [ref=e1660] [cursor=pointer]:
+                    - /url: /workflows/runs/64c9ea951c0a57fb0555f691f1a21ade
+                  - button "Delete run" [ref=e1661]:
+                    - img [ref=e1662]
+      - generic [ref=e1665]:
+        - generic [ref=e1666]:
+          - generic [ref=e1667]: Showing 1–5 of 5 runs
+          - combobox [ref=e1668]:
+            - option "10 per page" [selected]
+            - option "25 per page"
+            - option "50 per page"
+        - generic [ref=e1669]:
+          - button "Previous" [disabled] [ref=e1670]
+          - generic [ref=e1671]: Page 1 of 1
+          - button "Next" [disabled] [ref=e1672]

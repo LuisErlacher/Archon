@@ -32,6 +32,7 @@ import type {
   EffortLevel,
   ThinkingConfig,
   SandboxSettings,
+  GateResult,
 } from './schemas';
 import {
   isBashNode,
@@ -46,6 +47,7 @@ import { createLogger } from '@archon/paths';
 import { getWorkflowEventEmitter } from './event-emitter';
 import { evaluateCondition } from './condition-evaluator';
 import { isClaudeModel, isModelCompatible } from './model-validation';
+import { executeGates, formatGateFailureFeedback } from './gates';
 import {
   logNodeStart,
   logNodeComplete,
@@ -202,8 +204,14 @@ export function substituteNodeOutputRefs(
     (match, nodeId: string, field: string | undefined) => {
       const nodeOutput = nodeOutputs.get(nodeId);
       if (!nodeOutput) {
-        getLog().warn({ nodeId, match }, 'dag_node_output_ref_unknown_node');
-        return escapedForBash ? "''" : '';
+        if (escapedForBash) {
+          // Bash scripts handle empty strings; return safely to avoid breaking shell evaluation.
+          getLog().warn({ nodeId, match }, 'dag_node_output_ref_unknown_node');
+          return "''";
+        }
+        throw new Error(
+          `Node '${nodeId}' referenced in output substitution but not found in node outputs`
+        );
       }
       if (!field) {
         return escapedForBash ? shellQuote(nodeOutput.output) : nodeOutput.output;
@@ -218,11 +226,22 @@ export function substituteNodeOutputRefs(
         if (typeof value === 'number' || typeof value === 'boolean') return String(value);
         return escapedForBash ? "''" : ''; // objects, null, undefined, symbol, bigint → empty
       } catch (jsonErr) {
-        getLog().warn(
-          { nodeId, field, outputPreview: nodeOutput.output.slice(0, 100), err: jsonErr as Error },
-          'dag_node_output_ref_json_parse_failed'
+        if (escapedForBash) {
+          // Bash scripts handle empty strings; return safely to avoid breaking shell evaluation.
+          getLog().warn(
+            {
+              nodeId,
+              field,
+              outputPreview: nodeOutput.output.slice(0, 100),
+              err: jsonErr as Error,
+            },
+            'dag_node_output_ref_json_parse_failed'
+          );
+          return "''";
+        }
+        throw new Error(
+          `Node '${nodeId}' output is not valid JSON; cannot extract field '${field}'. Raw output: ${nodeOutput.output.slice(0, 200)}`
         );
-        return escapedForBash ? "''" : '';
       }
     }
   );
@@ -1092,35 +1111,34 @@ async function executeNodeInternal(
         }
         getLog().debug({ nodeId: node.id, streamingMode }, 'dag.structured_output_override');
       } else if (provider === 'codex') {
-        // Codex returns structured output inline in agent_message text
-        // (already accumulated in nodeOutputText). Validate it is valid JSON
-        // so downstream $nodeId.output.field references can parse it.
+        // Codex returns structured output inline in agent_message text.
+        // Validate it is valid JSON — fail the node if not, since output_format
+        // implies downstream nodes depend on structured data.
         try {
           JSON.parse(nodeOutputText);
           getLog().debug({ nodeId: node.id }, 'dag.codex_structured_output_valid_json');
         } catch {
-          getLog().warn(
+          getLog().error(
             { nodeId: node.id, outputPreview: nodeOutputText.slice(0, 200) },
             'dag.codex_structured_output_not_json'
           );
-          await safeSendMessage(
-            platform,
-            conversationId,
-            `Warning: Node '${node.id}' requested output_format but Codex returned non-JSON output. Downstream conditions referencing \`$${node.id}.output.field\` may not evaluate correctly.`,
-            nodeContext
-          );
+          const failMsg = `Node '${node.id}' requested output_format but Codex returned non-JSON output. Node failed.`;
+          await safeSendMessage(platform, conversationId, failMsg, nodeContext);
+          lastNodeCancelCheck.delete(`${workflowRun.id}:${node.id}`);
+          lastNodeActivityUpdate.delete(`${workflowRun.id}:${node.id}`);
+          return { state: 'failed', output: nodeOutputText, error: failMsg };
         }
       } else {
-        getLog().warn(
+        // SDK did not return structured_output — output_format contract violated.
+        getLog().error(
           { nodeId: node.id, workflowRunId: workflowRun.id },
           'dag.structured_output_missing'
         );
-        await safeSendMessage(
-          platform,
-          conversationId,
-          `Warning: Node '${node.id}' requested output_format but the SDK did not return structured output. Downstream conditions may not evaluate correctly.`,
-          nodeContext
-        );
+        const failMsg = `Node '${node.id}' requested output_format but the SDK did not return structured output. Node failed.`;
+        await safeSendMessage(platform, conversationId, failMsg, nodeContext);
+        lastNodeCancelCheck.delete(`${workflowRun.id}:${node.id}`);
+        lastNodeActivityUpdate.delete(`${workflowRun.id}:${node.id}`);
+        return { state: 'failed', output: nodeOutputText, error: failMsg };
       }
     }
 
@@ -1774,6 +1792,9 @@ async function executeLoopNode(
   let loopTotalCostUsd: number | undefined;
   let loopFinalStopReason: string | undefined;
   let loopTotalNumTurns: number | undefined;
+  let loopGateFailureCount = 0;
+  let loopGateFeedback = '';
+  let gateRejectedCompletion = false;
   const resolvedOptions = buildLoopNodeOptions(workflowProvider, workflowModel, config);
 
   // Helper to log event store errors consistently
@@ -1783,6 +1804,7 @@ async function executeLoopNode(
 
   for (let i = startIteration; i <= loop.max_iterations; i++) {
     const iterationStart = Date.now();
+    gateRejectedCompletion = false;
 
     // Check for non-running status between iterations (cancellation, deletion, or future: pause)
     const runStatus = await deps.store.getWorkflowRunStatus(workflowRun.id);
@@ -1844,7 +1866,13 @@ async function executeLoopNode(
         issueContext,
         i === startIteration ? loopUserInput : ''
       );
-      const finalPrompt = substituteNodeOutputRefs(substitutedPrompt, nodeOutputs);
+      let finalPrompt = substituteNodeOutputRefs(substitutedPrompt, nodeOutputs);
+
+      // Inject gate failure feedback from a prior iteration (if gates rejected COMPLETE signal)
+      if (loopGateFeedback) {
+        finalPrompt += loopGateFeedback;
+        loopGateFeedback = ''; // consume once
+      }
 
       const iterationOptions: WorkflowAssistantOptions | undefined = {
         ...resolvedOptions,
@@ -2087,13 +2115,91 @@ async function executeLoopNode(
       durationMs: duration,
     });
 
-    // Completion signal detected — exit the loop.
+    // Completion signal detected — verify with gates (if configured) before accepting.
     // For interactive loops: only honor the signal when the AI had user input to evaluate
     // (i.e., this is a resume iteration with loopUserInput). On the first iteration of a
     // fresh interactive loop, the user hasn't seen anything yet — always gate first.
     // For non-interactive loops: the AI signals task completion at any point.
     const interactiveFirstRun = loop.interactive && !isLoopResume;
     if (completionDetected && !interactiveFirstRun) {
+      // Run quality gates if configured on this loop node
+      if (node.gates && node.gates.length > 0) {
+        try {
+          const gateOutcome = await executeGates(node.gates, cwd, workflowRun.id, node.id);
+          if (gateOutcome.blocked) {
+            // Gate verification failed — reject COMPLETE signal and continue looping.
+            // Inject real failure feedback into the next iteration.
+            const feedback = formatGateFailureFeedback(gateOutcome.results);
+            getLog().warn(
+              {
+                nodeId: node.id,
+                iteration: i,
+                blockedGates: gateOutcome.results.filter(r => !r.passed).length,
+              },
+              'loop_node.gate_rejected_completion'
+            );
+            await safeSendMessage(
+              platform,
+              conversationId,
+              `Gate verification rejected COMPLETE signal for loop \`${node.id}\` (iteration ${String(i)}):\n${feedback}`,
+              msgContext
+            );
+            // Track consecutive gate failures for escalation
+            loopGateFailureCount = (loopGateFailureCount ?? 0) + 1;
+            const maxGateRetries = Math.max(...node.gates.map(g => g.maxRetries));
+            if (loopGateFailureCount > maxGateRetries) {
+              // Escalate to human with gate evidence
+              const escalateMsg =
+                `Loop \`${node.id}\` failed gate verification ${String(loopGateFailureCount)} times. ` +
+                `Pausing for human review.\n\n${feedback}`;
+              await safeSendMessage(platform, conversationId, escalateMsg, msgContext);
+              await deps.store.pauseWorkflowRun(workflowRun.id, {
+                nodeId: node.id,
+                message: `Gate verification failed ${String(loopGateFailureCount)} times: ${feedback.slice(0, 500)}`,
+                type: 'interactive_loop',
+                iteration: i,
+                sessionId: currentSessionId,
+              });
+              getWorkflowEventEmitter().emit({
+                type: 'approval_pending',
+                runId: workflowRun.id,
+                nodeId: node.id,
+                message: `Gate escalation after ${String(loopGateFailureCount)} failures`,
+              });
+              return { state: 'completed', output: lastIterationOutput, costUsd: loopTotalCostUsd };
+            }
+            // Inject gate feedback as additional context for the next iteration
+            loopGateFeedback = `\n\nGATE VERIFICATION FAILED — Your COMPLETE signal was rejected. Fix these issues:\n${feedback}\n\nRe-run the failing checks and try again.`;
+            gateRejectedCompletion = true;
+            continue;
+          }
+          // Gates passed — reset failure counter
+          loopGateFailureCount = 0;
+        } catch (gateErr) {
+          const errMsg = (gateErr as Error).message;
+          getLog().error(
+            { err: gateErr as Error, nodeId: node.id },
+            'loop_node.gate_execution_error'
+          );
+          await safeSendMessage(
+            platform,
+            conversationId,
+            `Warning: Gate execution failed for loop node '${node.id}': ${errMsg}. Accepting COMPLETE signal without gate verification.`,
+            msgContext
+          );
+          getWorkflowEventEmitter().emit({
+            type: 'gate_failed',
+            runId: workflowRun.id,
+            nodeId: node.id,
+            gateName: 'gate-engine',
+            gateType: 'execution-error',
+            severity: 'p2',
+            evidence: { exitCode: -1, stdout: errMsg },
+          });
+        }
+      }
+    }
+    if (completionDetected && !interactiveFirstRun && !gateRejectedCompletion) {
       await safeSendMessage(
         platform,
         conversationId,
@@ -2876,13 +2982,131 @@ export async function executeDagWorkflow(
       })
     );
 
-    // Process layer results — store all outputs, track failures
+    // Process layer results — store all outputs, run gates, persist node state, track failures
     let layerHadFailure = false;
     for (const result of layerResults) {
       if (result.status === 'fulfilled') {
         const { nodeId, output } = result.value;
         if (output.costUsd !== undefined) totalCostUsd += output.costUsd;
+
+        // Find the node definition to check for gates
+        const nodeDef = layer.find(n => n.id === nodeId);
+
+        // Run quality gates for completed AI nodes (command, prompt — loop handles its own gates)
+        let gateResults: GateResult[] | undefined;
+        if (
+          output.state === 'completed' &&
+          nodeDef &&
+          'gates' in nodeDef &&
+          nodeDef.gates &&
+          nodeDef.gates.length > 0 &&
+          !isLoopNode(nodeDef) // loop nodes handle gates internally via Part D
+        ) {
+          try {
+            const gateOutcome = await executeGates(nodeDef.gates, cwd, workflowRun.id, nodeId);
+            gateResults = gateOutcome.results;
+            if (gateOutcome.blocked) {
+              // p0/p1 gate failed — downgrade the node to failed
+              const feedback = formatGateFailureFeedback(gateOutcome.results);
+              getLog().warn(
+                {
+                  nodeId,
+                  runId: workflowRun.id,
+                  blockedGates: gateOutcome.results.filter(r => !r.passed).length,
+                },
+                'dag.node_gate_blocked'
+              );
+              await safeSendMessage(
+                platform,
+                conversationId,
+                `Gate verification failed for node \`${nodeId}\`:\n${feedback}`,
+                { workflowId: workflowRun.id, nodeName: nodeId }
+              );
+              // Override the output to failed
+              nodeOutputs.set(nodeId, {
+                state: 'failed',
+                output: output.output,
+                error: `Quality gate blocked: ${feedback.slice(0, 300)}`,
+              });
+              layerHadFailure = true;
+
+              // Persist node state as failed with gate results
+              deps.store
+                .upsertNodeState({
+                  workflow_run_id: workflowRun.id,
+                  node_id: nodeId,
+                  status: 'failed',
+                  output: output.output,
+                  output_validated: false,
+                  gate_results: gateResults,
+                })
+                .catch((err: Error) => {
+                  getLog().error({ err, nodeId }, 'dag.node_state_upsert_failed');
+                });
+              continue;
+            }
+          } catch (gateErr) {
+            const errMsg = (gateErr as Error).message;
+            getLog().error({ err: gateErr as Error, nodeId }, 'dag.gate_execution_error');
+            await safeSendMessage(
+              platform,
+              conversationId,
+              `Warning: Gate execution failed for node '${nodeId}': ${errMsg}. Node proceeding without gate verification.`,
+              { workflowId: workflowRun.id, nodeName: nodeId }
+            );
+            getWorkflowEventEmitter().emit({
+              type: 'gate_failed',
+              runId: workflowRun.id,
+              nodeId,
+              gateName: 'gate-engine',
+              gateType: 'execution-error',
+              severity: 'p2',
+              evidence: { exitCode: -1, stdout: errMsg },
+            });
+          }
+        }
+
         nodeOutputs.set(nodeId, output);
+
+        // Persist node state (fire-and-forget)
+        if (output.state === 'completed') {
+          deps.store
+            .upsertNodeState({
+              workflow_run_id: workflowRun.id,
+              node_id: nodeId,
+              status: 'completed',
+              output: output.output,
+              output_validated: true,
+              gate_results: gateResults,
+            })
+            .catch((err: Error) => {
+              getLog().error({ err, nodeId }, 'dag.node_state_upsert_failed');
+            });
+        } else if (output.state === 'failed') {
+          deps.store
+            .upsertNodeState({
+              workflow_run_id: workflowRun.id,
+              node_id: nodeId,
+              status: 'failed',
+              output: output.output,
+              output_validated: false,
+              gate_results: gateResults,
+            })
+            .catch((err: Error) => {
+              getLog().error({ err, nodeId }, 'dag.node_state_upsert_failed');
+            });
+        } else if (output.state === 'skipped') {
+          deps.store
+            .upsertNodeState({
+              workflow_run_id: workflowRun.id,
+              node_id: nodeId,
+              status: 'skipped',
+            })
+            .catch((err: Error) => {
+              getLog().error({ err, nodeId }, 'dag.node_state_upsert_failed');
+            });
+        }
+
         if (output.state === 'completed' && !isParallelLayer && output.sessionId !== undefined) {
           lastSequentialSessionId = output.sessionId;
         }

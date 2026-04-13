@@ -1,0 +1,109 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - link "A Archon" [ref=e5] [cursor=pointer]:
+      - /url: /chat
+      - generic [ref=e7]: A
+      - generic [ref=e8]: Archon
+    - link "Chat" [ref=e9] [cursor=pointer]:
+      - /url: /chat
+      - img [ref=e10]
+      - text: Chat
+    - link "Dashboard" [ref=e12] [cursor=pointer]:
+      - /url: /dashboard
+      - img [ref=e13]
+      - text: Dashboard
+    - link "Workflows" [ref=e18] [cursor=pointer]:
+      - /url: /workflows
+      - img [ref=e19]
+      - text: Workflows
+    - link "Settings" [active] [ref=e23] [cursor=pointer]:
+      - /url: /settings
+      - img [ref=e24]
+      - text: Settings
+    - generic [ref=e27]: v0.3.5
+  - main [ref=e28]:
+    - generic [ref=e1191]:
+      - heading "Settings" [level=1] [ref=e1194]
+      - generic [ref=e1196]:
+        - generic [ref=e1197]:
+          - generic [ref=e1198]:
+            - generic [ref=e1200]: System Health
+            - generic [ref=e1202]:
+              - generic [ref=e1203]:
+                - text: "Status:"
+                - generic [ref=e1204]: ok
+              - generic [ref=e1205]: "Adapter: web"
+              - generic [ref=e1206]: "Database: sqlite"
+              - generic [ref=e1207]:
+                - text: "Active:"
+                - generic [ref=e1208]: 0/10
+              - generic [ref=e1209]: "Queued: 0"
+              - generic [ref=e1210]: "Workflows: 0"
+              - generic [ref=e1211]: "Version: 0.3.5"
+              - generic [ref=e1212]: "Commit: 9da44d32"
+          - generic [ref=e1213]:
+            - generic [ref=e1215]: Concurrency
+            - generic [ref=e1219]: 0 / 10 concurrent conversations
+        - generic [ref=e1220]:
+          - generic [ref=e1221]:
+            - generic [ref=e1223]: Assistant Configuration
+            - generic [ref=e1225]:
+              - generic [ref=e1226]:
+                - generic [ref=e1227]: Default Assistant
+                - combobox "Default Assistant" [ref=e1228]:
+                  - option "Claude" [selected]
+                  - option "Codex"
+                - generic [ref=e1229]: Claude Model
+                - combobox "Claude Model" [ref=e1230]:
+                  - option "sonnet" [selected]
+                  - option "opus"
+                  - option "haiku"
+                - generic [ref=e1231]: Codex Model
+                - textbox "Codex Model" [ref=e1232]:
+                  - /placeholder: gpt-5.3-codex
+                - generic [ref=e1233]: Reasoning Effort
+                - combobox "Reasoning Effort" [ref=e1234]:
+                  - option "minimal"
+                  - option "low"
+                  - option "medium" [selected]
+                  - option "high"
+                  - option "xhigh"
+                - generic [ref=e1235]: Web Search
+                - combobox "Web Search" [ref=e1236]:
+                  - option "disabled" [selected]
+                  - option "cached"
+                  - option "live"
+              - generic [ref=e1237]:
+                - button "Save Changes" [disabled]
+          - generic [ref=e1238]:
+            - generic [ref=e1240]: Platform Connections
+            - generic [ref=e1242]:
+              - generic [ref=e1243]:
+                - generic [ref=e1244]: Web
+                - generic [ref=e1245]: Connected
+              - generic [ref=e1246]:
+                - generic [ref=e1247]: Slack
+                - generic [ref=e1248]: Not configured
+              - generic [ref=e1249]:
+                - generic [ref=e1250]: Telegram
+                - generic [ref=e1251]: Not configured
+              - generic [ref=e1252]:
+                - generic [ref=e1253]: Discord
+                - generic [ref=e1254]: Not configured
+              - generic [ref=e1255]:
+                - generic [ref=e1256]: GitHub
+                - generic [ref=e1257]: Not configured
+        - generic [ref=e1258]:
+          - generic [ref=e1260]: Projects
+          - generic [ref=e1261]:
+            - generic [ref=e1264]:
+              - generic [ref=e1265]:
+                - generic [ref=e1266]:
+                  - generic [ref=e1267]: coleam00/Archon
+                  - text: "0"
+                - generic [ref=e1268]: C:/Users/luis/projetos/pessoal/Archon
+              - generic [ref=e1269]:
+                - button "Allow env keys" [ref=e1270]
+                - button "Env Vars ▼" [ref=e1271]
+                - button "Remove" [ref=e1272]
+            - button "+ Add Project" [ref=e1273]

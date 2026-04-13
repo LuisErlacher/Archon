@@ -1,0 +1,710 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - link "A Archon" [ref=e5] [cursor=pointer]:
+      - /url: /chat
+      - generic [ref=e7]: A
+      - generic [ref=e8]: Archon
+    - link "Chat" [ref=e9] [cursor=pointer]:
+      - /url: /chat
+      - img [ref=e10]
+      - text: Chat
+    - link "Dashboard" [ref=e12] [cursor=pointer]:
+      - /url: /dashboard
+      - img [ref=e13]
+      - text: Dashboard
+    - link "Workflows" [active] [ref=e18] [cursor=pointer]:
+      - /url: /workflows
+      - img [ref=e19]
+      - text: Workflows
+    - link "Settings" [ref=e23] [cursor=pointer]:
+      - /url: /settings
+      - img [ref=e24]
+      - text: Settings
+    - generic [ref=e27]: v0.3.5
+  - main [ref=e28]:
+    - generic [ref=e452]:
+      - generic [ref=e453]:
+        - heading "Workflows" [level=1] [ref=e454]
+        - link "New Workflow" [ref=e455] [cursor=pointer]:
+          - /url: /workflows/builder
+          - img [ref=e456]
+          - text: New Workflow
+      - generic [ref=e459]:
+        - generic [ref=e460]:
+          - generic [ref=e461]:
+            - img [ref=e462]
+            - textbox "Search workflows..." [ref=e465]
+          - generic [ref=e466]:
+            - button "All" [ref=e467]
+            - button "CI/CD" [ref=e468]
+            - button "Code Review" [ref=e469]
+            - button "Automation" [ref=e470]
+            - button "Development" [ref=e471]
+        - generic [ref=e472]:
+          - 'button "Select workflow: Adversarial Dev" [ref=e473] [cursor=pointer]':
+            - generic [ref=e474]:
+              - img [ref=e476]
+              - generic [ref=e479]:
+                - heading "Adversarial Dev" [level=3] [ref=e480]
+                - paragraph [ref=e481]: archon-adversarial-dev
+            - generic [ref=e482]:
+              - generic [ref=e483]:
+                - generic [ref=e484]:
+                  - text: When to use
+                  - paragraph [ref=e485]: User wants to build a complete application from scratch using adversarial development.
+                - generic [ref=e486]:
+                  - text: Does
+                  - paragraph [ref=e487]: Three-role GAN-inspired development — Planner creates spec with sprints, then a state-machine loop alternates between Generator (builds code) and Evaluator (attacks it) with hard pass/fail thresholds. The evaluator's job is to BREAK what the generator builds. If any criterion scores below 7/10, the sprint goes back to the generator with adversarial feedback. Stops on sprint failure after max retries.
+              - generic [ref=e488]:
+                - generic [ref=e489]:
+                  - text: Triggers
+                  - generic [ref=e490]:
+                    - generic [ref=e491]: adversarial dev
+                    - generic [ref=e492]: adversarial development
+                    - generic [ref=e493]: build with adversarial
+                    - generic [ref=e494]: gan dev
+                    - generic [ref=e495]: +3 more
+                - generic [ref=e496]:
+                  - text: Not for
+                  - paragraph [ref=e497]: Bug fixes, PR reviews, refactoring existing code, simple one-off tasks.
+            - generic [ref=e498]:
+              - generic [ref=e499]:
+                - generic [ref=e500]: "#GitHub"
+                - generic [ref=e501]: "#Review"
+                - generic [ref=e502]: "#Refactor"
+              - generic [ref=e503]:
+                - link "Edit in builder" [ref=e504]:
+                  - /url: /workflows/builder?edit=archon-adversarial-dev
+                  - img [ref=e505]
+                - button "Run" [ref=e508]:
+                  - img [ref=e509]
+                  - text: Run
+          - 'button "Select workflow: Architect" [ref=e511] [cursor=pointer]':
+            - generic [ref=e512]:
+              - img [ref=e514]
+              - generic [ref=e516]:
+                - heading "Architect" [level=3] [ref=e517]
+                - paragraph [ref=e518]: archon-architect
+            - generic [ref=e519]:
+              - generic [ref=e520]:
+                - generic [ref=e521]:
+                  - text: When to use
+                  - paragraph [ref=e522]: User wants an architectural sweep, complexity reduction, or codebase health improvement.
+                - generic [ref=e523]:
+                  - text: Does
+                  - paragraph [ref=e524]: Scans codebase metrics -> analyzes architecture with principled lens -> plans targeted simplifications -> executes fixes with self-review loops (hooks) -> validates -> creates PR.
+              - generic [ref=e525]:
+                - generic [ref=e526]:
+                  - text: Triggers
+                  - generic [ref=e527]:
+                    - generic [ref=e528]: architect
+                    - generic [ref=e529]: simplify codebase
+                    - generic [ref=e530]: reduce complexity
+                    - generic [ref=e531]: architectural sweep
+                    - generic [ref=e532]: +3 more
+                - generic [ref=e533]:
+                  - text: Not for
+                  - paragraph [ref=e534]: Single-file fixes, feature development, bug fixes, PR reviews.
+            - generic [ref=e535]:
+              - generic [ref=e536]:
+                - generic [ref=e537]: "#GitHub"
+                - generic [ref=e538]: "#Review"
+                - generic [ref=e539]: "#Testing"
+              - generic [ref=e540]:
+                - link "Edit in builder" [ref=e541]:
+                  - /url: /workflows/builder?edit=archon-architect
+                  - img [ref=e542]
+                - button "Run" [ref=e545]:
+                  - img [ref=e546]
+                  - text: Run
+          - 'button "Select workflow: Assist" [ref=e548] [cursor=pointer]':
+            - generic [ref=e549]:
+              - img [ref=e551]
+              - generic [ref=e553]:
+                - heading "Assist" [level=3] [ref=e554]
+                - paragraph [ref=e555]: archon-assist
+            - generic [ref=e557]:
+              - generic [ref=e558]:
+                - text: When to use
+                - paragraph [ref=e559]: No other workflow matches the request.
+              - generic [ref=e560]:
+                - text: Does
+                - paragraph [ref=e561]: Full Claude Code agent with all tools available.
+            - generic [ref=e563]:
+              - generic [ref=e564]:
+                - generic [ref=e565]: "#Agent"
+                - generic [ref=e566]: "#Planning"
+              - generic [ref=e567]:
+                - link "Edit in builder" [ref=e568]:
+                  - /url: /workflows/builder?edit=archon-assist
+                  - img [ref=e569]
+                - button "Run" [ref=e572]:
+                  - img [ref=e573]
+                  - text: Run
+          - 'button "Select workflow: Comprehensive PR Review" [ref=e575] [cursor=pointer]':
+            - generic [ref=e576]:
+              - img [ref=e578]
+              - generic [ref=e581]:
+                - heading "Comprehensive PR Review" [level=3] [ref=e582]
+                - paragraph [ref=e583]: archon-comprehensive-pr-review
+            - generic [ref=e584]:
+              - generic [ref=e585]:
+                - generic [ref=e586]:
+                  - text: When to use
+                  - paragraph [ref=e587]: User wants a comprehensive code review of a pull request with automatic fixes.
+                - generic [ref=e588]:
+                  - text: Does
+                  - paragraph [ref=e589]: Syncs PR with main (rebase if needed) -> runs 5 specialized review agents in parallel -> synthesizes findings -> auto-fixes CRITICAL/HIGH issues -> reports remaining issues.
+              - generic [ref=e590]:
+                - generic [ref=e591]:
+                  - text: Triggers
+                  - generic [ref=e592]:
+                    - generic [ref=e593]: review this PR
+                    - generic [ref=e594]: "review PR #123"
+                    - generic [ref=e595]: comprehensive review
+                    - generic [ref=e596]: full PR review
+                    - generic [ref=e597]: +3 more
+                - generic [ref=e598]:
+                  - text: Not for
+                  - paragraph [ref=e599]: Quick questions about a PR, checking CI status, simple "what changed" queries.
+            - generic [ref=e600]:
+              - generic [ref=e601]:
+                - generic [ref=e602]: "#GitHub"
+                - generic [ref=e603]: "#Agent"
+                - generic [ref=e604]: "#Review"
+              - generic [ref=e605]:
+                - link "Edit in builder" [ref=e606]:
+                  - /url: /workflows/builder?edit=archon-comprehensive-pr-review
+                  - img [ref=e607]
+                - button "Run" [ref=e610]:
+                  - img [ref=e611]
+                  - text: Run
+          - 'button "Select workflow: Create Issue" [ref=e613] [cursor=pointer]':
+            - generic [ref=e614]:
+              - img [ref=e616]
+              - generic [ref=e625]:
+                - heading "Create Issue" [level=3] [ref=e626]
+                - paragraph [ref=e627]: archon-create-issue
+            - generic [ref=e628]:
+              - generic [ref=e629]:
+                - generic [ref=e630]:
+                  - text: When to use
+                  - paragraph [ref=e631]: User wants to report a bug or problem as a GitHub issue with automated reproduction.
+                - generic [ref=e632]:
+                  - text: Does
+                  - paragraph [ref=e633]: Classifies problem area (haiku) -> gathers context in parallel (templates, git state, duplicates) -> investigates relevant code -> reproduces the issue using area-specific tools (agent-browser, CLI, DB queries) -> gates on reproduction success -> creates issue with full evidence OR reports back if cannot reproduce.
+              - generic [ref=e634]:
+                - generic [ref=e635]:
+                  - text: Triggers
+                  - generic [ref=e636]:
+                    - generic [ref=e637]: create issue
+                    - generic [ref=e638]: file a bug
+                    - generic [ref=e639]: report this bug
+                    - generic [ref=e640]: open an issue for
+                    - generic [ref=e641]: +3 more
+                - generic [ref=e642]:
+                  - text: Not for
+                  - paragraph [ref=e643]: Feature requests, enhancements, or non-bug work. Only for bugs/problems.
+            - generic [ref=e644]:
+              - generic [ref=e645]:
+                - generic [ref=e646]: "#GitHub"
+                - generic [ref=e647]: "#Agent"
+              - generic [ref=e648]:
+                - link "Edit in builder" [ref=e649]:
+                  - /url: /workflows/builder?edit=archon-create-issue
+                  - img [ref=e650]
+                - button "Run" [ref=e653]:
+                  - img [ref=e654]
+                  - text: Run
+          - 'button "Select workflow: Feature Development" [ref=e656] [cursor=pointer]':
+            - generic [ref=e657]:
+              - img [ref=e659]
+              - generic [ref=e664]:
+                - heading "Feature Development" [level=3] [ref=e665]
+                - paragraph [ref=e666]: archon-feature-development
+            - generic [ref=e667]:
+              - generic [ref=e668]:
+                - generic [ref=e669]:
+                  - text: When to use
+                  - paragraph [ref=e670]: Implementing a feature from an existing plan.
+                - generic [ref=e671]:
+                  - text: Does
+                  - paragraph [ref=e672]: Implements the plan with validation loops -> creates pull request.
+              - generic [ref=e674]:
+                - text: Not for
+                - paragraph [ref=e675]: Creating plans (plans should be created separately), bug fixes, code reviews.
+            - generic [ref=e676]:
+              - generic [ref=e677]:
+                - generic [ref=e678]: "#GitHub"
+                - generic [ref=e679]: "#Review"
+                - generic [ref=e680]: "#Testing"
+              - generic [ref=e681]:
+                - link "Edit in builder" [ref=e682]:
+                  - /url: /workflows/builder?edit=archon-feature-development
+                  - img [ref=e683]
+                - button "Run" [ref=e686]:
+                  - img [ref=e687]
+                  - text: Run
+          - 'button "Select workflow: Fix Github Issue" [ref=e689] [cursor=pointer]':
+            - generic [ref=e690]:
+              - img [ref=e692]
+              - generic [ref=e701]:
+                - heading "Fix Github Issue" [level=3] [ref=e702]
+                - paragraph [ref=e703]: archon-fix-github-issue
+            - generic [ref=e704]:
+              - generic [ref=e706]:
+                - text: When to use
+                - paragraph [ref=e707]: User wants to FIX, RESOLVE, or IMPLEMENT a solution for a GitHub issue.
+              - generic [ref=e708]:
+                - generic [ref=e709]:
+                  - text: Triggers
+                  - generic [ref=e710]:
+                    - generic [ref=e711]: fix this issue
+                    - generic [ref=e712]: "implement issue #123"
+                    - generic [ref=e713]: resolve this bug
+                    - generic [ref=e714]: fix it
+                    - generic [ref=e715]: +3 more
+                - generic [ref=e716]:
+                  - text: Not for
+                  - paragraph [ref=e717]: Comprehensive multi-agent reviews (use archon-issue-review-full), questions about issues, CI failures, PR reviews, general exploration.
+            - generic [ref=e718]:
+              - generic [ref=e719]:
+                - generic [ref=e720]: "#GitHub"
+                - generic [ref=e721]: "#Agent"
+                - generic [ref=e722]: "#Review"
+              - generic [ref=e723]:
+                - link "Edit in builder" [ref=e724]:
+                  - /url: /workflows/builder?edit=archon-fix-github-issue
+                  - img [ref=e725]
+                - button "Run" [ref=e728]:
+                  - img [ref=e729]
+                  - text: Run
+          - 'button "Select workflow: Idea To PR" [ref=e731] [cursor=pointer]':
+            - generic [ref=e732]:
+              - img [ref=e734]
+              - generic [ref=e739]:
+                - heading "Idea To PR" [level=3] [ref=e740]
+                - paragraph [ref=e741]: archon-idea-to-pr
+            - generic [ref=e742]:
+              - generic [ref=e744]:
+                - text: When to use
+                - paragraph [ref=e745]: You have a feature idea or description and want end-to-end development.
+              - generic [ref=e747]:
+                - text: Not for
+                - paragraph [ref=e748]: Executing existing plans (use archon-plan-to-pr), quick fixes, standalone reviews.
+            - generic [ref=e749]:
+              - generic [ref=e750]:
+                - generic [ref=e751]: "#GitHub"
+                - generic [ref=e752]: "#Agent"
+                - generic [ref=e753]: "#Review"
+              - generic [ref=e754]:
+                - link "Edit in builder" [ref=e755]:
+                  - /url: /workflows/builder?edit=archon-idea-to-pr
+                  - img [ref=e756]
+                - button "Run" [ref=e759]:
+                  - img [ref=e760]
+                  - text: Run
+          - 'button "Select workflow: Interactive PRD" [ref=e762] [cursor=pointer]':
+            - generic [ref=e763]:
+              - img [ref=e765]
+              - generic [ref=e767]:
+                - heading "Interactive PRD" [level=3] [ref=e768]
+                - paragraph [ref=e769]: archon-interactive-prd
+            - generic [ref=e770]:
+              - generic [ref=e772]:
+                - text: When to use
+                - paragraph [ref=e773]: User wants to create a PRD through guided conversation.
+              - generic [ref=e774]:
+                - generic [ref=e775]:
+                  - text: Triggers
+                  - generic [ref=e776]:
+                    - generic [ref=e777]: create a prd
+                    - generic [ref=e778]: new prd
+                    - generic [ref=e779]: interactive prd
+                    - generic [ref=e780]: plan a feature
+                    - generic [ref=e781]: +2 more
+                - generic [ref=e782]:
+                  - text: Not for
+                  - paragraph [ref=e783]: Autonomous PRD generation without human input (use archon-ralph-generate).
+            - generic [ref=e784]:
+              - generic [ref=e785]:
+                - generic [ref=e786]: "#GitHub"
+                - generic [ref=e787]: "#Agent"
+                - generic [ref=e788]: "#Testing"
+              - generic [ref=e789]:
+                - link "Edit in builder" [ref=e790]:
+                  - /url: /workflows/builder?edit=archon-interactive-prd
+                  - img [ref=e791]
+                - button "Run" [ref=e794]:
+                  - img [ref=e795]
+                  - text: Run
+          - 'button "Select workflow: Issue Review Full" [ref=e797] [cursor=pointer]':
+            - generic [ref=e798]:
+              - img [ref=e800]
+              - generic [ref=e809]:
+                - heading "Issue Review Full" [level=3] [ref=e810]
+                - paragraph [ref=e811]: archon-issue-review-full
+            - generic [ref=e812]:
+              - generic [ref=e814]:
+                - text: When to use
+                - paragraph [ref=e815]: User wants a FULL, COMPREHENSIVE fix + review pipeline for a GitHub issue.
+              - generic [ref=e816]:
+                - generic [ref=e817]:
+                  - text: Triggers
+                  - generic [ref=e818]:
+                    - generic [ref=e819]: full review
+                    - generic [ref=e820]: comprehensive fix
+                    - generic [ref=e821]: fix with full review
+                    - generic [ref=e822]: deep review
+                    - generic [ref=e823]: +1 more
+                - generic [ref=e824]:
+                  - text: Not for
+                  - paragraph [ref=e825]: Simple issue fixes (use archon-fix-github-issue instead), questions about issues, CI failures, PR reviews, general exploration.
+            - generic [ref=e826]:
+              - generic [ref=e827]:
+                - generic [ref=e828]: "#GitHub"
+                - generic [ref=e829]: "#Agent"
+                - generic [ref=e830]: "#Review"
+              - generic [ref=e831]:
+                - link "Edit in builder" [ref=e832]:
+                  - /url: /workflows/builder?edit=archon-issue-review-full
+                  - img [ref=e833]
+                - button "Run" [ref=e836]:
+                  - img [ref=e837]
+                  - text: Run
+          - 'button "Select workflow: Piv Loop" [ref=e839] [cursor=pointer]':
+            - generic [ref=e840]:
+              - img [ref=e842]
+              - generic [ref=e845]:
+                - heading "Piv Loop" [level=3] [ref=e846]
+                - paragraph [ref=e847]: archon-piv-loop
+            - generic [ref=e848]:
+              - generic [ref=e850]:
+                - text: When to use
+                - paragraph [ref=e851]: User wants guided Plan-Implement-Validate development with human-in-the-loop.
+              - generic [ref=e852]:
+                - generic [ref=e853]:
+                  - text: Triggers
+                  - generic [ref=e854]:
+                    - generic [ref=e855]: piv
+                    - generic [ref=e856]: piv loop
+                    - generic [ref=e857]: plan implement validate
+                    - generic [ref=e858]: guided development
+                    - generic [ref=e859]: +3 more
+                - generic [ref=e860]:
+                  - text: Not for
+                  - paragraph [ref=e861]: "Autonomous implementation without planning (use archon-feature-development). NOT for: PRD creation (use archon-interactive-prd). NOT for: Ralph story-based implementation (use archon-ralph-dag)."
+            - generic [ref=e862]:
+              - generic [ref=e863]:
+                - generic [ref=e864]: "#GitHub"
+                - generic [ref=e865]: "#Agent"
+                - generic [ref=e866]: "#Review"
+              - generic [ref=e867]:
+                - link "Edit in builder" [ref=e868]:
+                  - /url: /workflows/builder?edit=archon-piv-loop
+                  - img [ref=e869]
+                - button "Run" [ref=e872]:
+                  - img [ref=e873]
+                  - text: Run
+          - 'button "Select workflow: Plan To PR" [ref=e875] [cursor=pointer]':
+            - generic [ref=e876]:
+              - img [ref=e878]
+              - generic [ref=e880]:
+                - heading "Plan To PR" [level=3] [ref=e881]
+                - paragraph [ref=e882]: archon-plan-to-pr
+            - generic [ref=e883]:
+              - generic [ref=e885]:
+                - text: When to use
+                - paragraph [ref=e886]: You have an existing implementation plan and want to execute it end-to-end.
+              - generic [ref=e888]:
+                - text: Not for
+                - paragraph [ref=e889]: Creating plans from scratch (use archon-idea-to-pr), quick fixes, standalone reviews.
+            - generic [ref=e890]:
+              - generic [ref=e891]:
+                - generic [ref=e892]: "#GitHub"
+                - generic [ref=e893]: "#Agent"
+                - generic [ref=e894]: "#Review"
+              - generic [ref=e895]:
+                - link "Edit in builder" [ref=e896]:
+                  - /url: /workflows/builder?edit=archon-plan-to-pr
+                  - img [ref=e897]
+                - button "Run" [ref=e900]:
+                  - img [ref=e901]
+                  - text: Run
+          - 'button "Select workflow: Ralph DAG" [ref=e903] [cursor=pointer]':
+            - generic [ref=e904]:
+              - img [ref=e906]
+              - generic [ref=e909]:
+                - heading "Ralph DAG" [level=3] [ref=e910]
+                - paragraph [ref=e911]: archon-ralph-dag
+            - generic [ref=e912]:
+              - generic [ref=e914]:
+                - text: When to use
+                - paragraph [ref=e915]: User wants to run a Ralph implementation loop.
+              - generic [ref=e917]:
+                - text: Triggers
+                - generic [ref=e918]:
+                  - generic [ref=e919]: ralph
+                  - generic [ref=e920]: run ralph
+                  - generic [ref=e921]: ralph dag
+                  - generic [ref=e922]: run ralph dag
+            - generic [ref=e923]:
+              - generic [ref=e924]:
+                - generic [ref=e925]: "#GitHub"
+                - generic [ref=e926]: "#Agent"
+                - generic [ref=e927]: "#Testing"
+              - generic [ref=e928]:
+                - link "Edit in builder" [ref=e929]:
+                  - /url: /workflows/builder?edit=archon-ralph-dag
+                  - img [ref=e930]
+                - button "Run" [ref=e933]:
+                  - img [ref=e934]
+                  - text: Run
+          - 'button "Select workflow: Refactor Safely" [ref=e936] [cursor=pointer]':
+            - generic [ref=e937]:
+              - img [ref=e939]
+              - generic [ref=e944]:
+                - heading "Refactor Safely" [level=3] [ref=e945]
+                - paragraph [ref=e946]: archon-refactor-safely
+            - generic [ref=e947]:
+              - generic [ref=e948]:
+                - generic [ref=e949]:
+                  - text: When to use
+                  - paragraph [ref=e950]: User wants to refactor code safely with continuous validation and behavior preservation.
+                - generic [ref=e951]:
+                  - text: Does
+                  - paragraph [ref=e952]: Scans refactoring scope -> analyzes impact (read-only) -> plans ordered task list -> executes with type-check hooks after every edit -> validates full suite -> verifies behavior preservation (read-only) -> creates PR with before/after comparison.
+              - generic [ref=e953]:
+                - generic [ref=e954]:
+                  - text: Triggers
+                  - generic [ref=e955]:
+                    - generic [ref=e956]: refactor
+                    - generic [ref=e957]: refactor safely
+                    - generic [ref=e958]: split this file
+                    - generic [ref=e959]: extract module
+                    - generic [ref=e960]: +5 more
+                - generic [ref=e961]:
+                  - text: Not for
+                  - paragraph [ref=e962]: Bug fixes (use archon-fix-github-issue), feature development (use archon-feature-development), general architecture sweeps (use archon-architect), PR reviews.
+            - generic [ref=e963]:
+              - generic [ref=e964]:
+                - generic [ref=e965]: "#GitHub"
+                - generic [ref=e966]: "#Review"
+                - generic [ref=e967]: "#Testing"
+              - generic [ref=e968]:
+                - link "Edit in builder" [ref=e969]:
+                  - /url: /workflows/builder?edit=archon-refactor-safely
+                  - img [ref=e970]
+                - button "Run" [ref=e973]:
+                  - img [ref=e974]
+                  - text: Run
+          - 'button "Select workflow: Remotion Generate" [ref=e976] [cursor=pointer]':
+            - generic [ref=e977]:
+              - img [ref=e979]
+              - generic [ref=e984]:
+                - heading "Remotion Generate" [level=3] [ref=e985]
+                - paragraph [ref=e986]: archon-remotion-generate
+            - generic [ref=e987]:
+              - generic [ref=e988]:
+                - generic [ref=e989]:
+                  - text: When to use
+                  - paragraph [ref=e990]: User wants to generate or modify a Remotion video composition using AI.
+                - generic [ref=e991]:
+                  - text: Does
+                  - paragraph [ref=e992]: "AI writes Remotion React code -> renders preview stills -> renders full video -> summarizes the output. Requires: A Remotion project in the working directory (src/index.ts, src/Root.tsx). Optional: Install the remotion-best-practices skill for higher quality output: npx skills add remotion-dev/skills"
+              - generic [ref=e994]:
+                - text: Triggers
+                - generic [ref=e995]:
+                  - generic [ref=e996]: create a video
+                  - generic [ref=e997]: generate video
+                  - generic [ref=e998]: remotion
+                  - generic [ref=e999]: make an animation
+                  - generic [ref=e1000]: +2 more
+            - generic [ref=e1001]:
+              - generic [ref=e1002]:
+                - generic [ref=e1003]: "#GitHub"
+                - generic [ref=e1004]: "#Review"
+              - generic [ref=e1005]:
+                - link "Edit in builder" [ref=e1006]:
+                  - /url: /workflows/builder?edit=archon-remotion-generate
+                  - img [ref=e1007]
+                - button "Run" [ref=e1010]:
+                  - img [ref=e1011]
+                  - text: Run
+          - 'button "Select workflow: Resolve Conflicts" [ref=e1013] [cursor=pointer]':
+            - generic [ref=e1014]:
+              - img [ref=e1016]
+              - generic [ref=e1020]:
+                - heading "Resolve Conflicts" [level=3] [ref=e1021]
+                - paragraph [ref=e1022]: archon-resolve-conflicts
+            - generic [ref=e1023]:
+              - generic [ref=e1024]:
+                - generic [ref=e1025]:
+                  - text: When to use
+                  - paragraph [ref=e1026]: PR has merge conflicts that need resolution.
+                - generic [ref=e1027]:
+                  - text: Does
+                  - paragraph [ref=e1028]: Fetches latest base branch -> analyzes conflicts -> auto-resolves simple conflicts -> presents options for complex conflicts -> commits and pushes resolution.
+              - generic [ref=e1029]:
+                - generic [ref=e1030]:
+                  - text: Triggers
+                  - generic [ref=e1031]:
+                    - generic [ref=e1032]: resolve conflicts
+                    - generic [ref=e1033]: fix merge conflicts
+                    - generic [ref=e1034]: rebase this PR
+                    - generic [ref=e1035]: resolve this
+                    - generic [ref=e1036]: +3 more
+                - generic [ref=e1037]:
+                  - text: Not for
+                  - paragraph [ref=e1038]: PRs without conflicts, general rebasing without conflicts, squashing commits.
+            - generic [ref=e1039]:
+              - generic [ref=e1040]:
+                - generic [ref=e1041]: "#GitHub"
+                - generic [ref=e1042]: "#Testing"
+                - generic [ref=e1043]: "#Git"
+              - generic [ref=e1044]:
+                - link "Edit in builder" [ref=e1045]:
+                  - /url: /workflows/builder?edit=archon-resolve-conflicts
+                  - img [ref=e1046]
+                - button "Run" [ref=e1049]:
+                  - img [ref=e1050]
+                  - text: Run
+          - 'button "Select workflow: Smart PR Review" [ref=e1052] [cursor=pointer]':
+            - generic [ref=e1053]:
+              - img [ref=e1055]
+              - generic [ref=e1058]:
+                - heading "Smart PR Review" [level=3] [ref=e1059]
+                - paragraph [ref=e1060]: archon-smart-pr-review
+            - generic [ref=e1061]:
+              - generic [ref=e1062]:
+                - generic [ref=e1063]:
+                  - text: When to use
+                  - paragraph [ref=e1064]: User wants a smart, efficient PR review that adapts to PR complexity.
+                - generic [ref=e1065]:
+                  - text: Does
+                  - paragraph [ref=e1066]: Gathers PR scope -> classifies complexity -> routes to only relevant review agents -> synthesizes findings -> auto-fixes CRITICAL/HIGH issues.
+              - generic [ref=e1067]:
+                - generic [ref=e1068]:
+                  - text: Triggers
+                  - generic [ref=e1069]:
+                    - generic [ref=e1070]: smart review
+                    - generic [ref=e1071]: review this PR
+                    - generic [ref=e1072]: "review PR #123"
+                    - generic [ref=e1073]: efficient review
+                    - generic [ref=e1074]: +2 more
+                - generic [ref=e1075]:
+                  - text: Not for
+                  - paragraph [ref=e1076]: When you explicitly want ALL review agents (use archon-comprehensive-pr-review instead).
+            - generic [ref=e1077]:
+              - generic [ref=e1078]:
+                - generic [ref=e1079]: "#GitHub"
+                - generic [ref=e1080]: "#Agent"
+                - generic [ref=e1081]: "#Review"
+              - generic [ref=e1082]:
+                - link "Edit in builder" [ref=e1083]:
+                  - /url: /workflows/builder?edit=archon-smart-pr-review
+                  - img [ref=e1084]
+                - button "Run" [ref=e1087]:
+                  - img [ref=e1088]
+                  - text: Run
+          - 'button "Select workflow: Test Loop DAG" [ref=e1090] [cursor=pointer]':
+            - generic [ref=e1091]:
+              - img [ref=e1093]
+              - generic [ref=e1095]:
+                - heading "Test Loop DAG" [level=3] [ref=e1096]
+                - paragraph [ref=e1097]: archon-test-loop-dag
+            - generic [ref=e1098]:
+              - generic [ref=e1099]:
+                - generic [ref=e1100]:
+                  - text: When to use
+                  - paragraph [ref=e1101]: "User explicitly says \"test-loop-dag\" or \"run test-loop-dag\". IMPORTANT: This is a DAG workflow with a loop node that iterates until completion."
+                - generic [ref=e1102]:
+                  - text: Does
+                  - paragraph [ref=e1103]: Initializes a counter, iterates until it reaches 3, then reports completion.
+              - generic [ref=e1105]:
+                - text: Not for
+                - paragraph [ref=e1106]: "General testing questions or debugging. Does: Initializes a counter, iterates until it reaches 3, then reports completion."
+            - generic [ref=e1107]:
+              - generic [ref=e1109]: "#Testing"
+              - generic [ref=e1110]:
+                - link "Edit in builder" [ref=e1111]:
+                  - /url: /workflows/builder?edit=archon-test-loop-dag
+                  - img [ref=e1112]
+                - button "Run" [ref=e1115]:
+                  - img [ref=e1116]
+                  - text: Run
+          - 'button "Select workflow: Validate PR" [ref=e1118] [cursor=pointer]':
+            - generic [ref=e1119]:
+              - img [ref=e1121]
+              - generic [ref=e1123]:
+                - heading "Validate PR" [level=3] [ref=e1124]
+                - paragraph [ref=e1125]: archon-validate-pr
+            - generic [ref=e1126]:
+              - generic [ref=e1127]:
+                - generic [ref=e1128]:
+                  - text: When to use
+                  - paragraph [ref=e1129]: User wants a thorough PR validation that tests both main (bug present) and feature branch (bug fixed).
+                - generic [ref=e1130]:
+                  - text: Does
+                  - paragraph [ref=e1131]: Fetches PR info -> finds free ports -> parallel code review (main vs feature) -> E2E test on main (reproduce bug) -> E2E test on feature (verify fix) -> final verdict report.
+              - generic [ref=e1132]:
+                - generic [ref=e1133]:
+                  - text: Triggers
+                  - generic [ref=e1134]:
+                    - generic [ref=e1135]: validate PR
+                    - generic [ref=e1136]: "validate pr #123"
+                    - generic [ref=e1137]: test this PR
+                    - generic [ref=e1138]: verify PR
+                    - generic [ref=e1139]: +3 more
+                - generic [ref=e1140]:
+                  - text: Not for
+                  - paragraph [ref=e1141]: Quick code-only reviews (use archon-smart-pr-review), fixing issues, general exploration.
+            - generic [ref=e1142]:
+              - generic [ref=e1143]:
+                - generic [ref=e1144]: "#GitHub"
+                - generic [ref=e1145]: "#Agent"
+                - generic [ref=e1146]: "#Review"
+              - generic [ref=e1147]:
+                - link "Edit in builder" [ref=e1148]:
+                  - /url: /workflows/builder?edit=archon-validate-pr
+                  - img [ref=e1149]
+                - button "Run" [ref=e1152]:
+                  - img [ref=e1153]
+                  - text: Run
+          - 'button "Select workflow: Workflow Builder" [ref=e1155] [cursor=pointer]':
+            - generic [ref=e1156]:
+              - img [ref=e1158]
+              - generic [ref=e1160]:
+                - heading "Workflow Builder" [level=3] [ref=e1161]
+                - paragraph [ref=e1162]: archon-workflow-builder
+            - generic [ref=e1163]:
+              - generic [ref=e1164]:
+                - generic [ref=e1165]:
+                  - text: When to use
+                  - paragraph [ref=e1166]: User wants to create a new custom workflow for their project.
+                - generic [ref=e1167]:
+                  - text: Does
+                  - paragraph [ref=e1168]: Scans codebase -> extracts intent (JSON) -> generates YAML -> validates -> saves.
+              - generic [ref=e1169]:
+                - generic [ref=e1170]:
+                  - text: Triggers
+                  - generic [ref=e1171]:
+                    - generic [ref=e1172]: build me a workflow
+                    - generic [ref=e1173]: create a workflow
+                    - generic [ref=e1174]: generate a workflow
+                    - generic [ref=e1175]: new workflow
+                    - generic [ref=e1176]: +2 more
+                - generic [ref=e1177]:
+                  - text: Not for
+                  - paragraph [ref=e1178]: Editing existing workflows or creating non-workflow files.
+            - generic [ref=e1179]:
+              - generic [ref=e1180]:
+                - generic [ref=e1181]: "#GitHub"
+                - generic [ref=e1182]: "#Testing"
+              - generic [ref=e1183]:
+                - link "Edit in builder" [ref=e1184]:
+                  - /url: /workflows/builder?edit=archon-workflow-builder
+                  - img [ref=e1185]
+                - button "Run" [ref=e1188]:
+                  - img [ref=e1189]
+                  - text: Run

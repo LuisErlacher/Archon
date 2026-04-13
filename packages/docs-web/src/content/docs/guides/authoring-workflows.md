@@ -1105,6 +1105,69 @@ Before deploying a workflow:
 
 ---
 
+## Quality Gates
+
+Quality gates run bash commands after a node completes to verify its output meets quality standards. If a gate fails with severity `p0` or `p1`, the node is downgraded to `failed` and downstream nodes are blocked.
+
+### Basic Usage
+
+```yaml
+nodes:
+  - id: implement
+    command: execute
+    gates:
+      - name: lint
+        type: builtin
+        command: "bun run lint"
+        severity: p1
+      - name: type-check
+        type: builtin
+        command: "bun run type-check"
+        severity: p1
+```
+
+### Gate Properties
+
+| Property | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `name` | yes | — | Unique name for the gate |
+| `type` | no | `custom` | `builtin` (built-in parser) or `custom` |
+| `command` | no | — | Bash command to run (exit code 0 = pass) |
+| `severity` | no | `p1` | `p0` (critical), `p1` (high), `p2` (medium), `p3` (low) — only `p0`/`p1` block the node |
+| `maxRetries` | no | `0` | Max retries before escalating (loop nodes only) |
+
+### Built-in Gate Types
+
+Built-in gates (`type: builtin`) automatically parse test runner output:
+
+- **vitest** / **jest**: Parses `Tests: X passed, Y failed` patterns
+- **bun**: Parses `X pass, Y fail` patterns
+
+### Loop Node Gates
+
+For loop nodes, gates verify the `COMPLETE` signal. If a gate fails, the loop continues with feedback injected into the next iteration. After `maxRetries` consecutive failures, the loop escalates to human review.
+
+```yaml
+nodes:
+  - id: iterate-fix
+    loop:
+      until: "COMPLETE"
+      max_iterations: 10
+    prompt: "Fix the issues and signal COMPLETE when done."
+    gates:
+      - name: tests
+        type: builtin
+        command: "bun run test"
+        severity: p1
+        maxRetries: 3
+```
+
+### Gate Execution Errors
+
+If a gate command fails to execute (e.g., missing binary, permission denied), the node proceeds with a warning. A `gate_failed` event is emitted for observability. The node is **not** blocked — only actual gate verification failures block nodes.
+
+---
+
 ## Summary
 
 1. **Workflows orchestrate commands** — YAML files defining a DAG of execution nodes
@@ -1124,5 +1187,6 @@ Before deploying a workflow:
 15. **`systemPrompt`** — override the default system prompt per node (Claude only)
 16. **`sandbox`** — OS-level filesystem/network restrictions per node or workflow (Claude only)
 17. **Loop nodes** — use `loop:` within a DAG node for iterative execution until completion signal
-18. **Defaults as templates** — browse `.archon/workflows/defaults/` for real examples to copy and modify
-19. **Test thoroughly** — each command, the artifact flow, and edge cases
+18. **Quality gates** — `gates:` run bash commands post-completion to verify output quality; `p0`/`p1` failures block the node
+19. **Defaults as templates** — browse `.archon/workflows/defaults/` for real examples to copy and modify
+20. **Test thoroughly** — each command, the artifact flow, and edge cases

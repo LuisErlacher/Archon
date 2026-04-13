@@ -5,7 +5,13 @@
  * Implementations live in @archon/core (backed by the real DB);
  * the workflow engine depends only on this narrow interface.
  */
-import type { WorkflowRun, WorkflowRunStatus, ApprovalContext } from './schemas';
+import type {
+  WorkflowRun,
+  WorkflowRunStatus,
+  ApprovalContext,
+  NodeState,
+  GateResult,
+} from './schemas';
 
 export const WORKFLOW_EVENT_TYPES = [
   'workflow_started',
@@ -29,6 +35,36 @@ export const WORKFLOW_EVENT_TYPES = [
 ] as const;
 
 export type WorkflowEventType = (typeof WORKFLOW_EVENT_TYPES)[number];
+
+/** Row shape for the remote_agent_node_states table. */
+export interface NodeStateRow {
+  id: string;
+  workflow_run_id: string;
+  node_id: string;
+  status: NodeState;
+  output: string;
+  output_validated: boolean;
+  gate_results: GateResult[];
+  attempt_count: number;
+  started_at: string;
+  completed_at: string | null;
+  updated_at: string;
+}
+
+/** Row shape for the remote_agent_test_results table. */
+export interface TestResultRow {
+  id: string;
+  node_state_id: string;
+  suite_name: string;
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  failures: { name: string; message: string }[];
+  stdout: string;
+  exit_code: number;
+  created_at: string;
+}
 
 export interface IWorkflowStore {
   // Run lifecycle
@@ -79,6 +115,41 @@ export interface IWorkflowStore {
    * Throws on DB error — caller (executor.ts) owns the degradation policy.
    */
   getCompletedDagNodeOutputs(workflowRunId: string): Promise<Map<string, string>>;
+
+  // Node state persistence
+  upsertNodeState(data: {
+    workflow_run_id: string;
+    node_id: string;
+    status: NodeState;
+    output?: string;
+    output_validated?: boolean;
+    gate_results?: GateResult[];
+    attempt_count?: number;
+  }): Promise<void>;
+
+  getNodeState(workflowRunId: string, nodeId: string): Promise<NodeStateRow | null>;
+  getNodeStates(workflowRunId: string): Promise<NodeStateRow[]>;
+
+  /**
+   * Return a map of nodeId → output for all validated completed nodes.
+   * Preferred over getCompletedDagNodeOutputs for new runs (validated state).
+   */
+  getValidatedNodeOutputs(workflowRunId: string): Promise<Map<string, string>>;
+
+  // Test result persistence
+  createTestResult(data: {
+    node_state_id: string;
+    suite_name: string;
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    failures?: { name: string; message: string }[];
+    stdout: string;
+    exit_code: number;
+  }): Promise<void>;
+
+  getTestResults(nodeStateId: string): Promise<TestResultRow[]>;
 
   // Per-codebase env vars for workflow node injection
   getCodebaseEnvVars(codebaseId: string): Promise<Record<string, string>>;

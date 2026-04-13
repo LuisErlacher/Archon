@@ -1,0 +1,215 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - link "A Archon" [ref=e5] [cursor=pointer]:
+      - /url: /chat
+      - generic [ref=e7]: A
+      - generic [ref=e8]: Archon
+    - link "Chat" [ref=e9] [cursor=pointer]:
+      - /url: /chat
+      - img [ref=e10]
+      - text: Chat
+    - link "Dashboard" [ref=e12] [cursor=pointer]:
+      - /url: /dashboard
+      - img [ref=e13]
+      - text: Dashboard
+    - link "Workflows" [ref=e18] [cursor=pointer]:
+      - /url: /workflows
+      - img [ref=e19]
+      - text: Workflows
+    - link "Settings" [ref=e23] [cursor=pointer]:
+      - /url: /settings
+      - img [ref=e24]
+      - text: Settings
+    - generic [ref=e27]: v0.3.5
+  - main [ref=e28]:
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - button "New Chat" [ref=e32]:
+          - img [ref=e33]
+          - text: New Chat
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]: Project
+            - button "Add project" [ref=e38]:
+              - img [ref=e39]
+          - combobox [ref=e40]:
+            - option "All Projects" [selected]
+            - option "coleam00/Archon"
+        - generic [ref=e42]:
+          - img [ref=e43]
+          - textbox "Search..." [ref=e46]
+        - generic [ref=e50]:
+          - link "/status 13 de abr., 08:20" [ref=e292] [cursor=pointer]:
+            - /url: /chat/web-1776079229910-rvv9jd
+            - generic [ref=e294]:
+              - generic "/status" [ref=e296]
+              - generic [ref=e297]: 13 de abr., 08:20
+            - generic [ref=e298]:
+              - button "Rename conversation" [ref=e299]:
+                - img [ref=e300]
+              - button "Delete conversation" [ref=e303]:
+                - img [ref=e304]
+          - link "Checking Current Status telegram 12 de abr., 22:19" [ref=e51] [cursor=pointer]:
+            - /url: /chat/6046408065
+            - generic [ref=e53]:
+              - generic [ref=e54]:
+                - generic "Checking Current Status" [ref=e55]
+                - generic [ref=e56]: telegram
+              - generic [ref=e57]: 12 de abr., 22:19
+            - generic [ref=e58]:
+              - button "Rename conversation" [ref=e59]:
+                - img [ref=e60]
+              - button "Delete conversation" [ref=e63]:
+                - img [ref=e64]
+          - link "Quality Gate Engine Implementa... cli 12 de abr., 22:19 coleam00/Archon" [ref=e67] [cursor=pointer]:
+            - /url: /chat/cli-1776043195905-l94nuz
+            - generic [ref=e69]:
+              - generic [ref=e70]:
+                - generic "Quality Gate Engine Implementation" [ref=e71]: Quality Gate Engine Implementa...
+                - generic [ref=e72]: cli
+              - generic [ref=e73]: 12 de abr., 22:19
+              - generic [ref=e74]: coleam00/Archon
+            - generic [ref=e75]:
+              - button "Rename conversation" [ref=e76]:
+                - img [ref=e77]
+              - button "Delete conversation" [ref=e80]:
+                - img [ref=e81]
+          - link "Add Pi AI Provider Implementat... cli 12 de abr., 21:31 coleam00/Archon" [ref=e84] [cursor=pointer]:
+            - /url: /chat/cli-1776040269781-n5gub9
+            - generic [ref=e86]:
+              - generic [ref=e87]:
+                - generic "Add Pi AI Provider Implementation" [ref=e88]: Add Pi AI Provider Implementat...
+                - generic [ref=e89]: cli
+              - generic [ref=e90]: 12 de abr., 21:31
+              - generic [ref=e91]: coleam00/Archon
+            - generic [ref=e92]:
+              - button "Rename conversation" [ref=e93]:
+                - img [ref=e94]
+              - button "Delete conversation" [ref=e97]:
+                - img [ref=e98]
+          - link "Hybrid workflow storage DB fil... cli 12 de abr., 21:31 coleam00/Archon" [ref=e101] [cursor=pointer]:
+            - /url: /chat/cli-1776040269800-jjwrja
+            - generic [ref=e103]:
+              - generic [ref=e104]:
+                - generic "Hybrid workflow storage DB filesystem" [ref=e105]: Hybrid workflow storage DB fil...
+                - generic [ref=e106]: cli
+              - generic [ref=e107]: 12 de abr., 21:31
+              - generic [ref=e108]: coleam00/Archon
+            - generic [ref=e109]:
+              - button "Rename conversation" [ref=e110]:
+                - img [ref=e111]
+              - button "Delete conversation" [ref=e114]:
+                - img [ref=e115]
+          - link "Multi-user JWT authentication ... cli 12 de abr., 21:31 coleam00/Archon" [ref=e118] [cursor=pointer]:
+            - /url: /chat/cli-1776040269804-5r0kh2
+            - generic [ref=e120]:
+              - generic [ref=e121]:
+                - generic "Multi-user JWT authentication system" [ref=e122]: Multi-user JWT authentication ...
+                - generic [ref=e123]: cli
+              - generic [ref=e124]: 12 de abr., 21:31
+              - generic [ref=e125]: coleam00/Archon
+            - generic [ref=e126]:
+              - button "Rename conversation" [ref=e127]:
+                - img [ref=e128]
+              - button "Delete conversation" [ref=e131]:
+                - img [ref=e132]
+          - link "Multi-user JWT authentication ... cli 12 de abr., 21:03 coleam00/Archon" [ref=e135] [cursor=pointer]:
+            - /url: /chat/cli-1776038619770-rgp4tw
+            - generic [ref=e137]:
+              - generic [ref=e138]:
+                - generic "Multi-user JWT authentication system" [ref=e139]: Multi-user JWT authentication ...
+                - generic [ref=e140]: cli
+              - generic [ref=e141]: 12 de abr., 21:03
+              - generic [ref=e142]: coleam00/Archon
+            - generic [ref=e143]:
+              - button "Rename conversation" [ref=e144]:
+                - img [ref=e145]
+              - button "Delete conversation" [ref=e148]:
+                - img [ref=e149]
+          - link "Hybrid workflow storage implem... cli 12 de abr., 21:03 coleam00/Archon" [ref=e152] [cursor=pointer]:
+            - /url: /chat/cli-1776038602481-jpoeuu
+            - generic [ref=e154]:
+              - generic [ref=e155]:
+                - generic "Hybrid workflow storage implementation" [ref=e156]: Hybrid workflow storage implem...
+                - generic [ref=e157]: cli
+              - generic [ref=e158]: 12 de abr., 21:03
+              - generic [ref=e159]: coleam00/Archon
+            - generic [ref=e160]:
+              - button "Rename conversation" [ref=e161]:
+                - img [ref=e162]
+              - button "Delete conversation" [ref=e165]:
+                - img [ref=e166]
+          - link "Add Pi AI provider integration cli 12 de abr., 21:03 coleam00/Archon" [ref=e169] [cursor=pointer]:
+            - /url: /chat/cli-1776038585737-yquy7t
+            - generic [ref=e171]:
+              - generic [ref=e172]:
+                - generic "Add Pi AI provider integration" [ref=e173]
+                - generic [ref=e174]: cli
+              - generic [ref=e175]: 12 de abr., 21:03
+              - generic [ref=e176]: coleam00/Archon
+            - generic [ref=e177]:
+              - button "Rename conversation" [ref=e178]:
+                - img [ref=e179]
+              - button "Delete conversation" [ref=e182]:
+                - img [ref=e183]
+          - link "Quality Gate Engine Implementa... cli 12 de abr., 20:46 coleam00/Archon" [ref=e186] [cursor=pointer]:
+            - /url: /chat/cli-1776037592183-7h2vbc
+            - generic [ref=e188]:
+              - generic [ref=e189]:
+                - generic "Quality Gate Engine Implementation" [ref=e190]: Quality Gate Engine Implementa...
+                - generic [ref=e191]: cli
+              - generic [ref=e192]: 12 de abr., 20:46
+              - generic [ref=e193]: coleam00/Archon
+            - generic [ref=e194]:
+              - button "Rename conversation" [ref=e195]:
+                - img [ref=e196]
+              - button "Delete conversation" [ref=e199]:
+                - img [ref=e200]
+          - link "Quality Gate Engine Implementa... cli 12 de abr., 20:35 coleam00/Archon" [ref=e203] [cursor=pointer]:
+            - /url: /chat/cli-1776036925308-45bt2e
+            - generic [ref=e205]:
+              - generic [ref=e206]:
+                - generic "Quality Gate Engine Implementation" [ref=e207]: Quality Gate Engine Implementa...
+                - generic [ref=e208]: cli
+              - generic [ref=e209]: 12 de abr., 20:35
+              - generic [ref=e210]: coleam00/Archon
+            - generic [ref=e211]:
+              - button "Rename conversation" [ref=e212]:
+                - img [ref=e213]
+              - button "Delete conversation" [ref=e216]:
+                - img [ref=e217]
+      - generic [ref=e246]:
+        - generic [ref=e247]:
+          - generic [ref=e248]:
+            - heading "/status" [level=1] [ref=e249]
+            - generic [ref=e250]: No project
+          - generic [ref=e254]: Connected
+        - generic [ref=e257]:
+          - generic [ref=e260]:
+            - generic [ref=e262]:
+              - paragraph [ref=e263]: /status
+              - button "Copy message" [ref=e264]:
+                - img [ref=e265]
+            - generic [ref=e268]: 08:20:29
+          - generic [ref=e271]:
+            - generic [ref=e272]:
+              - heading "Orchestrator Status" [level=2] [ref=e273]
+              - paragraph [ref=e274]:
+                - strong [ref=e275]: Platform
+                - text: ": web"
+                - strong [ref=e276]: AI Assistant
+                - text: ": claude"
+              - heading "Registered Projects (1)" [level=2] [ref=e277]
+              - list [ref=e278]:
+                - listitem [ref=e279]: coleam00/Archon (coleam00/Archon.git)
+              - heading "Conversation Context" [level=2] [ref=e280]
+              - list [ref=e281]:
+                - listitem [ref=e282]: "Project: None — orchestrator will route as needed"
+            - generic [ref=e283]: 08:20:29
+        - generic [ref=e286]: Agent is working...
+        - generic [ref=e289]:
+          - button "Attach file" [ref=e290]:
+            - img
+          - textbox "Message Archon..." [ref=e291]
+          - button [disabled]:
+            - img

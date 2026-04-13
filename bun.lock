@@ -71,6 +71,8 @@
         "@archon/isolation": "workspace:*",
         "@archon/paths": "workspace:*",
         "@archon/workflows": "workspace:*",
+        "@mariozechner/pi-agent-core": "^0.66.1",
+        "@mariozechner/pi-ai": "^0.66.1",
         "@openai/codex-sdk": "^0.116.0",
         "jose": "^5.9.6",
         "pg": "^8.11.0",

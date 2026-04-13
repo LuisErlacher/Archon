@@ -372,10 +372,15 @@ export async function executeWorkflow(
 
     // Step 2: Activate the resume — propagate as error if this fails
     if (resumableRun) {
-      // Load completed node outputs from the prior run's events.
+      // Load completed node outputs — prefer validated node states over event-replay.
       let priorNodes: Map<string, string>;
       try {
-        priorNodes = await deps.store.getCompletedDagNodeOutputs(resumableRun.id);
+        // Try validated node states first (new runs persist validated state)
+        priorNodes = await deps.store.getValidatedNodeOutputs(resumableRun.id);
+        if (priorNodes.size === 0) {
+          // Fall back to event-replay for runs that predate node_states table
+          priorNodes = await deps.store.getCompletedDagNodeOutputs(resumableRun.id);
+        }
       } catch (error) {
         const err = error as Error;
         getLog().warn(
@@ -388,7 +393,6 @@ export async function executeWorkflow(
           'workflow.dag_resume_node_outputs_failed'
         );
         // Intentional: fall back to empty map (fresh start) if prior node outputs can't be loaded.
-        // getCompletedDagNodeOutputs threw unexpectedly — safe to degrade rather than abort the run.
         priorNodes = new Map();
         await safeSendMessage(
           platform,

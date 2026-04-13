@@ -44,8 +44,23 @@ mock.module('../db/codebases', () => ({
   getCodebase: mockGetCodebase,
 }));
 
-mock.module('../clients/factory', () => ({
-  getAssistantClient: mock(() => ({})),
+const mockUpsertNodeState = mock(() => Promise.resolve());
+const mockGetNodeState = mock(() => Promise.resolve(null));
+const mockGetNodeStates = mock(() => Promise.resolve([]));
+const mockGetValidatedNodeOutputs = mock(() => Promise.resolve(new Map<string, string>()));
+const mockCreateTestResult = mock(() => Promise.resolve());
+const mockGetTestResults = mock(() => Promise.resolve([]));
+mock.module('../db/node-states', () => ({
+  upsertNodeState: mockUpsertNodeState,
+  getNodeState: mockGetNodeState,
+  getNodeStates: mockGetNodeStates,
+  getValidatedNodeOutputs: mockGetValidatedNodeOutputs,
+  createTestResult: mockCreateTestResult,
+  getTestResults: mockGetTestResults,
+}));
+
+mock.module('../providers/factory', () => ({
+  getAgentProvider: mock(() => ({})),
 }));
 
 mock.module('../config/config-loader', () => ({
@@ -73,6 +88,12 @@ describe('createWorkflowStore', () => {
       'cancelWorkflowRun',
       'createWorkflowEvent',
       'getCompletedDagNodeOutputs',
+      'upsertNodeState',
+      'getNodeState',
+      'getNodeStates',
+      'getValidatedNodeOutputs',
+      'createTestResult',
+      'getTestResults',
       'getCodebase',
       'getCodebaseEnvVars',
     ];

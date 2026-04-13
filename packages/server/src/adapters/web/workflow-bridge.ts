@@ -149,6 +149,50 @@ export function mapWorkflowEvent(event: WorkflowEmitterEvent): string | null {
         timestamp: Date.now(),
       });
 
+    case 'gate_started':
+      return JSON.stringify({
+        type: 'gate_started',
+        runId: event.runId,
+        nodeId: event.nodeId,
+        gateName: event.gateName,
+        gateType: event.gateType,
+        severity: event.severity,
+        timestamp: Date.now(),
+      });
+
+    case 'gate_passed':
+      return JSON.stringify({
+        type: 'gate_passed',
+        runId: event.runId,
+        nodeId: event.nodeId,
+        gateName: event.gateName,
+        gateType: event.gateType,
+        evidence: event.evidence,
+        timestamp: Date.now(),
+      });
+
+    case 'gate_failed':
+      return JSON.stringify({
+        type: 'gate_failed',
+        runId: event.runId,
+        nodeId: event.nodeId,
+        gateName: event.gateName,
+        gateType: event.gateType,
+        severity: event.severity,
+        evidence: event.evidence,
+        timestamp: Date.now(),
+      });
+
+    case 'gate_blocked':
+      return JSON.stringify({
+        type: 'gate_blocked',
+        runId: event.runId,
+        nodeId: event.nodeId,
+        gateName: event.gateName,
+        message: event.message,
+        timestamp: Date.now(),
+      });
+
     default: {
       const exhaustiveCheck: never = event;
       getLog().warn(

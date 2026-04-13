@@ -390,6 +390,37 @@ export class SqliteAdapter implements IDatabase {
         created_at TEXT DEFAULT (datetime('now'))
       );
 
+      -- Node states table (validated node execution state)
+      CREATE TABLE IF NOT EXISTS remote_agent_node_states (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT NOT NULL REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+        node_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        output TEXT DEFAULT '',
+        output_validated INTEGER DEFAULT 0,
+        gate_results TEXT DEFAULT '[]',
+        attempt_count INTEGER DEFAULT 0,
+        started_at TEXT DEFAULT (datetime('now')),
+        completed_at TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(workflow_run_id, node_id)
+      );
+
+      -- Test results table (test run evidence per node)
+      CREATE TABLE IF NOT EXISTS remote_agent_test_results (
+        id TEXT PRIMARY KEY,
+        node_state_id TEXT NOT NULL REFERENCES remote_agent_node_states(id) ON DELETE CASCADE,
+        suite_name TEXT NOT NULL,
+        total INTEGER NOT NULL DEFAULT 0,
+        passed INTEGER NOT NULL DEFAULT 0,
+        failed INTEGER NOT NULL DEFAULT 0,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        failures TEXT DEFAULT '[]',
+        stdout TEXT DEFAULT '',
+        exit_code INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
       -- Messages table (conversation history for Web UI)
       CREATE TABLE IF NOT EXISTS remote_agent_messages (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -437,6 +468,9 @@ export class SqliteAdapter implements IDatabase {
         ON remote_agent_workflow_definitions(codebase_id) WHERE codebase_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_project_members_codebase ON remote_agent_project_members(codebase_id);
       CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON remote_agent_project_members(user_id);
+      CREATE INDEX IF NOT EXISTS idx_node_states_run_id ON remote_agent_node_states(workflow_run_id);
+      CREATE INDEX IF NOT EXISTS idx_node_states_status ON remote_agent_node_states(status);
+      CREATE INDEX IF NOT EXISTS idx_test_results_node_state ON remote_agent_test_results(node_state_id);
 
       -- From PG migration 009: staleness detection for running workflows
       CREATE INDEX IF NOT EXISTS idx_workflow_runs_last_activity

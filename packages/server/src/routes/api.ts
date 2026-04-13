@@ -71,6 +71,7 @@ import * as workflowDb from '@archon/core/db/workflows';
 import * as workflowDefinitionsDb from '@archon/core/db/workflow-definitions';
 import * as workflowEventDb from '@archon/core/db/workflow-events';
 import * as messageDb from '@archon/core/db/messages';
+import * as nodeStateDb from '@archon/core/db/node-states';
 import { errorSchema } from './schemas/common.schemas';
 import { updateCheckResponseSchema } from './schemas/system.schemas';
 import {
@@ -95,6 +96,11 @@ import {
   importWorkflowBodySchema,
   importWorkflowResponseSchema,
 } from './schemas/workflow.schemas';
+import {
+  runSummaryResponseSchema,
+  storeGateResultBodySchema,
+  storeGateResultResponseSchema,
+} from './schemas/gate.schemas';
 import {
   conversationListResponseSchema,
   listConversationsQuerySchema,
@@ -892,6 +898,48 @@ const getUpdateCheckRoute = createRoute({
       },
       description: 'Update check result',
     },
+  },
+});
+
+// =========================================================================
+// Gate & node state route definitions
+// =========================================================================
+
+const getRunSummaryRoute = createRoute({
+  method: 'get',
+  path: '/api/workflows/runs/{runId}/summary',
+  tags: ['Workflows'],
+  summary: 'Get run summary with node states, gate results, and test evidence',
+  request: { params: z.object({ runId: z.string() }) },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: runSummaryResponseSchema } },
+      description: 'Run summary',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const storeGateResultRoute = createRoute({
+  method: 'post',
+  path: '/api/workflows/runs/{runId}/nodes/{nodeId}/gate-result',
+  tags: ['Workflows'],
+  summary: 'Store a gate execution result for a node',
+  request: {
+    params: z.object({ runId: z.string(), nodeId: z.string() }),
+    body: {
+      content: { 'application/json': { schema: storeGateResultBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: storeGateResultResponseSchema } },
+      description: 'Gate result stored',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
   },
 });
 
@@ -2267,6 +2315,60 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error }, 'get_workflow_run_failed');
       return apiError(c, 500, 'Failed to get workflow run');
+    }
+  });
+
+  // GET /api/workflows/runs/:runId/summary - Run summary with node states + gate results
+  registerOpenApiRoute(getRunSummaryRoute, async c => {
+    try {
+      const runId = c.req.param('runId') ?? '';
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) {
+        return apiError(c, 404, 'Workflow run not found');
+      }
+      const nodeStates = await nodeStateDb.getNodeStates(runId);
+      const nodes = await Promise.all(
+        nodeStates.map(async ns => ({
+          nodeState: ns,
+          testResults: await nodeStateDb.getTestResults(ns.id),
+        }))
+      );
+      return c.json({ runId, nodes });
+    } catch (error) {
+      getLog().error({ err: error }, 'get_run_summary_failed');
+      return apiError(c, 500, 'Failed to get run summary');
+    }
+  });
+
+  // POST /api/workflows/runs/:runId/nodes/:nodeId/gate-result - Store gate result
+  registerOpenApiRoute(storeGateResultRoute, async c => {
+    try {
+      const runId = c.req.param('runId') ?? '';
+      const nodeId = c.req.param('nodeId') ?? '';
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) {
+        return apiError(c, 404, 'Workflow run not found');
+      }
+      const body = getValidatedBody(c, storeGateResultBodySchema);
+
+      // Get or create node state, then append gate result.
+      // Cast body to GateResult: Zod validation applies .default([]) for failures,
+      // so the runtime value always has failures populated. The type mismatch is
+      // due to Zod input vs output types when using .default().
+      const gateResult = body as import('@archon/workflows/schemas/gate').GateResult;
+      const nodeState = await nodeStateDb.getNodeState(runId, nodeId);
+      const existingResults = nodeState?.gate_results ?? [];
+      await nodeStateDb.upsertNodeState({
+        workflow_run_id: runId,
+        node_id: nodeId,
+        status: nodeState?.status ?? 'running',
+        output: nodeState?.output,
+        gate_results: [...existingResults, gateResult],
+      });
+      return c.json({ success: true });
+    } catch (error) {
+      getLog().error({ err: error }, 'store_gate_result_failed');
+      return apiError(c, 500, 'Failed to store gate result');
     }
   });
 

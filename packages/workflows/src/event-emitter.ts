@@ -142,6 +142,45 @@ interface WorkflowCancelledEvent {
   reason: string;
 }
 
+interface GateStartedEvent {
+  type: 'gate_started';
+  runId: string;
+  nodeId: string;
+  gateName: string;
+  gateType: string;
+  severity: string;
+}
+
+interface GatePassedEvent {
+  type: 'gate_passed';
+  runId: string;
+  nodeId: string;
+  gateName: string;
+  gateType: string;
+  evidence: {
+    exitCode: number;
+    parsedResults?: { total: number; passed: number; failed: number; skipped: number };
+  };
+}
+
+interface GateFailedEvent {
+  type: 'gate_failed';
+  runId: string;
+  nodeId: string;
+  gateName: string;
+  gateType: string;
+  severity: string;
+  evidence: { exitCode: number; stdout: string; parsedResults?: object };
+}
+
+interface GateBlockedEvent {
+  type: 'gate_blocked';
+  runId: string;
+  nodeId: string;
+  gateName: string;
+  message: string;
+}
+
 export type WorkflowEmitterEvent =
   | WorkflowStartedEvent
   | WorkflowCompletedEvent
@@ -157,7 +196,11 @@ export type WorkflowEmitterEvent =
   | ToolStartedEvent
   | ToolCompletedEvent
   | ApprovalPendingEvent
-  | WorkflowCancelledEvent;
+  | WorkflowCancelledEvent
+  | GateStartedEvent
+  | GatePassedEvent
+  | GateFailedEvent
+  | GateBlockedEvent;
 
 // ---------------------------------------------------------------------------
 // Emitter class
