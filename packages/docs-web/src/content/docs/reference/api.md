@@ -273,6 +273,8 @@ Only user-defined workflows can be deleted. Bundled defaults cannot be removed.
 | POST | `/api/workflows/runs/{runId}/approve` | Approve a paused workflow |
 | POST | `/api/workflows/runs/{runId}/reject` | Reject a paused workflow |
 | DELETE | `/api/workflows/runs/{runId}` | Delete a terminal run and its events |
+| GET | `/api/workflows/runs/{runId}/summary` | Get run summary with node states and gate results |
+| POST | `/api/workflows/runs/{runId}/gate-result` | Store a gate result for a node |
 
 #### Run a Workflow
 

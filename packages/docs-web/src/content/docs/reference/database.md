@@ -119,7 +119,7 @@ psql $DATABASE_URL -c "\dt"
 
 ## Schema Overview
 
-The database has 8 tables, all prefixed with `remote_agent_`:
+The database has 10 tables, all prefixed with `remote_agent_`:
 
 1. **`remote_agent_codebases`** - Repository metadata
    - Commands stored as JSONB: `{command_name: {path, description}}`
@@ -160,6 +160,16 @@ The database has 8 tables, all prefixed with `remote_agent_`:
    - Injected into Claude SDK subprocess environment at execution time
    - Managed via Web UI Settings panel; `env:` in `.archon/config.yaml` for CLI users
 
+9. **`remote_agent_node_states`** - Per-node execution state
+   - Tracks status, output, and gate results per DAG node
+   - Enables validated resume (skip completed nodes)
+   - Upsert on `(workflow_run_id, node_id)` composite key
+
+10. **`remote_agent_test_results`** - Parsed test suite results
+    - Linked to node states via foreign key
+    - Stores test counts (total, passed, failed, skipped) and failure details
+    - Gate evidence for quality gate verification
+
 ## Migration List
 
 | Migration | Description |
@@ -185,3 +195,5 @@ The database has 8 tables, all prefixed with `remote_agent_`:
 | `018_fix_workflow_status_default.sql` | Fix workflow status default value |
 | `019_workflow_resume_path.sql` | Workflow resume path support |
 | `020_codebase_env_vars.sql` | Per-project environment variables |
+| `021_add_allow_env_keys_to_codebases.sql` | Allow env keys consent flag |
+| `022_node_states.sql` | Node states and test results tables for quality gates |

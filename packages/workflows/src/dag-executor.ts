@@ -2117,7 +2117,7 @@ async function executeLoopNode(
             );
             // Track consecutive gate failures for escalation
             loopGateFailureCount = (loopGateFailureCount ?? 0) + 1;
-            const maxGateRetries = Math.max(...node.gates.map(g => g.maxRetries ?? 3));
+            const maxGateRetries = Math.max(...node.gates.map(g => g.maxRetries));
             if (loopGateFailureCount > maxGateRetries) {
               // Escalate to human with gate evidence
               const escalateMsg =
@@ -2147,11 +2147,26 @@ async function executeLoopNode(
           // Gates passed — reset failure counter
           loopGateFailureCount = 0;
         } catch (gateErr) {
+          const errMsg = (gateErr as Error).message;
           getLog().error(
             { err: gateErr as Error, nodeId: node.id },
             'loop_node.gate_execution_error'
           );
-          // Gate execution error doesn't block — accept the COMPLETE signal
+          await safeSendMessage(
+            platform,
+            conversationId,
+            `Warning: Gate execution failed for loop node '${node.id}': ${errMsg}. Accepting COMPLETE signal without gate verification.`,
+            msgContext
+          );
+          getWorkflowEventEmitter().emit({
+            type: 'gate_failed',
+            runId: workflowRun.id,
+            nodeId: node.id,
+            gateName: 'gate-engine',
+            gateType: 'execution-error',
+            severity: 'p2',
+            evidence: { exitCode: -1, stdout: errMsg },
+          });
         }
       }
     }
@@ -2998,8 +3013,23 @@ export async function executeDagWorkflow(
               continue;
             }
           } catch (gateErr) {
+            const errMsg = (gateErr as Error).message;
             getLog().error({ err: gateErr as Error, nodeId }, 'dag.gate_execution_error');
-            // Gate execution error doesn't block the node — treat as ungated
+            await safeSendMessage(
+              platform,
+              conversationId,
+              `Warning: Gate execution failed for node '${nodeId}': ${errMsg}. Node proceeding without gate verification.`,
+              { workflowId: workflowRun.id, nodeName: nodeId }
+            );
+            getWorkflowEventEmitter().emit({
+              type: 'gate_failed',
+              runId: workflowRun.id,
+              nodeId,
+              gateName: 'gate-engine',
+              gateType: 'execution-error',
+              severity: 'p2',
+              evidence: { exitCode: -1, stdout: errMsg },
+            });
           }
         }
 
