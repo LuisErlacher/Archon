@@ -64,6 +64,7 @@ function getLog(): ReturnType<typeof createLogger> {
 }
 import * as conversationDb from '@archon/core/db/conversations';
 import * as codebaseDb from '@archon/core/db/codebases';
+import * as usersDb from '@archon/core/db/users';
 import * as envVarDb from '@archon/core/db/env-vars';
 import * as isolationEnvDb from '@archon/core/db/isolation-environments';
 import * as workflowDb from '@archon/core/db/workflows';
@@ -125,6 +126,7 @@ import {
   configResponseSchema,
   codebaseEnvironmentsResponseSchema,
 } from './schemas/config.schemas';
+import { getValidatedBody } from './utils';
 
 // Read app version once at module load (root package.json is 4 levels up from src/routes/)
 let appVersion = 'unknown';
@@ -910,6 +912,16 @@ export function registerApiRoutes(
     return c.json({ error: message, ...(detail ? { detail } : {}) }, status);
   }
 
+  function getUserId(c: Context): { userId: string | undefined; isAdmin: boolean } {
+    const userId = c.get('userId') as string | undefined;
+    const userRole = c.get('userRole') as string | undefined;
+    // When JWT_SECRET is unset, authMiddleware is effectively disabled: no userId is
+    // injected into the context. We fall back to isAdmin=true so that existing tests
+    // and local dev setups without auth configured continue to work.
+    // WARNING: In production, JWT_SECRET must be set — without it every caller is treated as admin.
+    return { userId, isAdmin: !userId || userRole === 'admin' };
+  }
+
   /**
    * Validate that a caller-supplied `cwd` is rooted at a registered codebase path.
    * This prevents path traversal — callers cannot read/write outside known project roots.
@@ -1080,17 +1092,22 @@ export function registerApiRoutes(
     return { accepted: true, status: result.status };
   }
 
-  // GET /api/conversations - List conversations
+  // GET /api/conversations - List conversations (scoped by user)
   registerOpenApiRoute(getConversationsRoute, async c => {
     try {
       const platformType = c.req.query('platform') ?? undefined;
       const codebaseId = c.req.query('codebaseId') ?? undefined;
-      const conversations = await conversationDb.listConversations(
-        50,
-        platformType,
-        codebaseId,
-        true
-      );
+      const { userId, isAdmin } = getUserId(c);
+      const conversations =
+        isAdmin || !userId
+          ? await conversationDb.listConversations(50, platformType, codebaseId, true)
+          : await conversationDb.listConversationsForUser(
+              userId,
+              50,
+              platformType,
+              codebaseId,
+              true
+            );
       return c.json(conversations);
     } catch (error) {
       getLog().error({ err: error }, 'list_conversations_failed');
@@ -1104,6 +1121,12 @@ export function registerApiRoutes(
     try {
       const conv = await conversationDb.findConversationByPlatformId(platformId);
       if (!conv) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      // Ownership check: non-admin users can only access their own conversations.
+      // Return 404 (not 403) to avoid leaking existence of other users' conversations.
+      const { userId, isAdmin } = getUserId(c);
+      if (!isAdmin && userId && conv.user_id !== userId) {
         return apiError(c, 404, 'Conversation not found');
       }
       return c.json(conv);
@@ -1135,6 +1158,12 @@ export function registerApiRoutes(
         codebaseId
       );
       webAdapter.setConversationDbId(conversation.platform_conversation_id, conversation.id);
+
+      // Set user_id on the conversation for ownership scoping
+      const { userId } = getUserId(c);
+      if (userId) {
+        await conversationDb.setConversationUserId(conversation.id, userId);
+      }
 
       // If message provided, dispatch it atomically (avoids ghost "Untitled" conversations)
       if (message) {
@@ -1186,6 +1215,11 @@ export function registerApiRoutes(
       if (!conv) {
         return apiError(c, 404, 'Conversation not found');
       }
+      // Ownership check: non-admin users can only modify their own conversations.
+      const { userId, isAdmin } = getUserId(c);
+      if (!isAdmin && userId && conv.user_id !== userId) {
+        return apiError(c, 404, 'Conversation not found');
+      }
       if (title !== undefined) {
         await conversationDb.updateConversationTitle(conv.id, title.slice(0, 255));
       }
@@ -1205,6 +1239,11 @@ export function registerApiRoutes(
     try {
       const conv = await conversationDb.findConversationByPlatformId(platformId);
       if (!conv) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      // Ownership check: non-admin users can only delete their own conversations.
+      const { userId, isAdmin } = getUserId(c);
+      if (!isAdmin && userId && conv.user_id !== userId) {
         return apiError(c, 404, 'Conversation not found');
       }
       await conversationDb.softDeleteConversation(conv.id);
@@ -1496,10 +1535,14 @@ export function registerApiRoutes(
     });
   });
 
-  // GET /api/codebases - List codebases
+  // GET /api/codebases - List codebases (scoped by user membership)
   registerOpenApiRoute(listCodebasesRoute, async c => {
     try {
-      const codebases = await codebaseDb.listCodebases();
+      const { userId, isAdmin } = getUserId(c);
+      const codebases =
+        isAdmin || !userId
+          ? await codebaseDb.listCodebases()
+          : await codebaseDb.listCodebasesForUser(userId);
 
       // Deduplicate by repository_url (keep most recently updated)
       const normalizeUrl = (url: string): string => url.replace(/\.git$/, '');
@@ -1576,6 +1619,26 @@ export function registerApiRoutes(
       const codebase = await codebaseDb.getCodebase(result.codebaseId);
       if (!codebase) {
         return apiError(c, 500, 'Codebase created but not found');
+      }
+
+      // Auto-add creator as owner of the project
+      const { userId } = getUserId(c);
+      if (userId) {
+        try {
+          await usersDb.createProjectMember(userId, result.codebaseId, 'owner');
+        } catch (e) {
+          const err = e as Error & { code?: string };
+          // PostgreSQL unique violation: 23505; SQLite: UNIQUE constraint failed
+          const isDuplicate =
+            err.code === '23505' || (err.message?.includes('UNIQUE constraint failed') ?? false);
+          if (!isDuplicate) {
+            // Unexpected error — log for debugging but don't fail the codebase creation
+            getLog().warn(
+              { err, userId, codebaseId: result.codebaseId },
+              'codebase.owner_membership_failed'
+            );
+          }
+        }
       }
 
       return c.json(codebase, result.alreadyExisted ? 200 : 201);
@@ -1765,11 +1828,6 @@ export function registerApiRoutes(
     handler: (c: Context) => Response | Promise<Response>
   ): void {
     app.openapi(route, handler as never);
-  }
-
-  /** Access Zod-validated body from a handler registered via registerOpenApiRoute. */
-  function getValidatedBody<T>(c: Context, _schema: z.ZodType<T>): T {
-    return (c.req as unknown as { valid(k: 'json'): T }).valid('json');
   }
 
   // Serve OpenAPI spec

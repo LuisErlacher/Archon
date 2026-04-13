@@ -20,6 +20,7 @@ export * as sessionDb from './sessions';
 export * as isolationEnvDb from './isolation-environments';
 export * as workflowDb from './workflows';
 export * as workflowDefinitionsDb from './workflow-definitions';
+export * as usersDb from './users';
 
 // Also export individual functions for direct imports
 export * from './conversations';

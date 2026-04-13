@@ -57,9 +57,47 @@ export interface HealthResponse {
   is_docker: boolean;
 }
 
+// Module-level auth token — set by AuthContext via setApiToken()
+let currentToken: string | null = null;
+
+export function setApiToken(token: string | null): void {
+  currentToken = token;
+}
+
+export function getApiToken(): string | null {
+  return currentToken;
+}
+
+export interface UserResponse {
+  id: string;
+  username: string;
+  displayName: string | null;
+  role: 'admin' | 'user';
+  createdAt: string;
+}
+
+export interface AuthTokenResponse {
+  user: UserResponse;
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface RefreshTokenResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
+  const headers = new Headers(options?.headers);
+  if (currentToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${currentToken}`);
+  }
+
+  const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('archon:unauthorized'));
+    }
     const body = await res.text();
     const truncated = body.length > 200 ? body.slice(0, 200) + '...' : body;
     const path = new URL(url, window.location.origin).pathname;
@@ -68,6 +106,49 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
     throw error;
   }
   return res.json() as Promise<T>;
+}
+
+// Auth API functions
+export async function loginApi(username: string, password: string): Promise<AuthTokenResponse> {
+  return fetchJSON<AuthTokenResponse>('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function registerApi(
+  username: string,
+  password: string,
+  displayName?: string
+): Promise<AuthTokenResponse> {
+  return fetchJSON<AuthTokenResponse>('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, displayName }),
+  });
+}
+
+export async function refreshSession(refreshToken: string): Promise<RefreshTokenResponse> {
+  // Use raw fetch rather than fetchJSON to avoid accidentally injecting a stale
+  // in-memory access token into the refresh request via fetchJSON's auto-inject logic.
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!res.ok) {
+    throw new Error('Token refresh failed');
+  }
+  return res.json() as Promise<RefreshTokenResponse>;
+}
+
+export async function getCurrentUser(token: string): Promise<UserResponse> {
+  const res = await fetch('/api/auth/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to get current user');
+  return res.json() as Promise<UserResponse>;
 }
 
 // Conversations

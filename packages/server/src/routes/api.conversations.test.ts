@@ -64,6 +64,8 @@ mock.module('@archon/core/db/conversations', () => ({
   softDeleteConversation: mockSoftDeleteConversation,
   updateConversationTitle: mockUpdateConversationTitle,
   listConversations: mock(async () => []),
+  listConversationsForUser: mock(async () => []),
+  setConversationUserId: mock(async () => {}),
   getOrCreateConversation: mock(async () => ({
     id: 'internal-uuid-123',
     platform_conversation_id: 'web-test-abc',
@@ -73,6 +75,7 @@ mock.module('@archon/core/db/conversations', () => ({
     platform_type: 'web',
     deleted_at: null,
     codebase_id: null,
+    user_id: null,
   })),
 }));
 
@@ -87,7 +90,16 @@ mock.module('@archon/core/db/messages', () => ({
 }));
 mock.module('@archon/core/db/codebases', () => ({
   listCodebases: mock(async () => [{ default_cwd: '/tmp/project' }]),
+  listCodebasesForUser: mock(async () => []),
   getCodebase: mock(async () => null),
+}));
+
+mock.module('@archon/core/db/users', () => ({
+  createProjectMember: mock(async () => ({
+    user_id: 'user-1',
+    codebase_id: 'codebase-1',
+    role: 'owner',
+  })),
 }));
 
 import { registerApiRoutes } from './api';

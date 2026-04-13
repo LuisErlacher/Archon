@@ -64,6 +64,8 @@ psql $DATABASE_URL < migrations/017_drop_command_templates.sql
 psql $DATABASE_URL < migrations/018_fix_workflow_status_default.sql
 psql $DATABASE_URL < migrations/019_workflow_resume_path.sql
 psql $DATABASE_URL < migrations/020_codebase_env_vars.sql
+psql $DATABASE_URL < migrations/021_allow_env_keys.sql
+psql $DATABASE_URL < migrations/022_multi_user_auth.sql
 ```
 
 ## Local PostgreSQL via Docker
@@ -94,6 +96,8 @@ docker compose exec postgres psql -U postgres -d remote_coding_agent
 \i /migrations/018_fix_workflow_status_default.sql
 \i /migrations/019_workflow_resume_path.sql
 \i /migrations/020_codebase_env_vars.sql
+\i /migrations/021_allow_env_keys.sql
+\i /migrations/022_multi_user_auth.sql
 \q
 ```
 
@@ -101,6 +105,8 @@ Or from your host machine (requires `psql` installed):
 
 ```bash
 psql postgresql://postgres:postgres@localhost:5432/remote_coding_agent < migrations/020_codebase_env_vars.sql
+psql postgresql://postgres:postgres@localhost:5432/remote_coding_agent < migrations/021_allow_env_keys.sql
+psql postgresql://postgres:postgres@localhost:5432/remote_coding_agent < migrations/022_multi_user_auth.sql
 # ... and so on for each migration not yet applied
 ```
 
@@ -119,7 +125,7 @@ psql $DATABASE_URL -c "\dt"
 
 ## Schema Overview
 
-The database has 8 tables, all prefixed with `remote_agent_`:
+The database has 10 tables, all prefixed with `remote_agent_`:
 
 1. **`remote_agent_codebases`** - Repository metadata
    - Commands stored as JSONB: `{command_name: {path, description}}`
@@ -160,6 +166,14 @@ The database has 8 tables, all prefixed with `remote_agent_`:
    - Injected into Claude SDK subprocess environment at execution time
    - Managed via Web UI Settings panel; `env:` in `.archon/config.yaml` for CLI users
 
+9. **`remote_agent_users`** - User accounts for authentication
+   - Username, bcrypt password hash, display name, role (`admin` | `user`)
+   - First registered user automatically receives the `admin` role
+
+10. **`remote_agent_project_members`** - Codebase access control
+    - Junction table: user-codebase, roles: `owner`, `member`
+    - Admins see all codebases; members see only their assigned codebases
+
 ## Migration List
 
 | Migration | Description |
@@ -185,3 +199,5 @@ The database has 8 tables, all prefixed with `remote_agent_`:
 | `018_fix_workflow_status_default.sql` | Fix workflow status default value |
 | `019_workflow_resume_path.sql` | Workflow resume path support |
 | `020_codebase_env_vars.sql` | Per-project environment variables |
+| `021_allow_env_keys.sql` | Per-codebase env-leak gate consent bit |
+| `022_multi_user_auth.sql` | Multi-user auth: users table, project members, conversation user_id |

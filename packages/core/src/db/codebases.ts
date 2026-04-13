@@ -180,6 +180,18 @@ export async function listCodebases(): Promise<readonly Codebase[]> {
   return result.rows;
 }
 
+/** Returns only codebases the given user is a member of (via remote_agent_project_members). Admins use listCodebases(). */
+export async function listCodebasesForUser(userId: string): Promise<readonly Codebase[]> {
+  const result = await pool.query<Codebase>(
+    `SELECT c.* FROM remote_agent_codebases c
+     INNER JOIN remote_agent_project_members pm ON pm.codebase_id = c.id
+     WHERE pm.user_id = $1
+     ORDER BY c.name`,
+    [userId]
+  );
+  return result.rows;
+}
+
 export async function deleteCodebase(id: string): Promise<void> {
   getLog().debug({ codebaseId: id }, 'db.codebase_delete_cascade_started');
   // First, unlink any sessions referencing this codebase (FK has no cascade)
