@@ -11,20 +11,20 @@ export interface TokenPayload {
   role: 'admin' | 'user';
 }
 
-export async function generateAccessToken(payload: TokenPayload): Promise<string> {
+async function signToken(payload: TokenPayload, expirationTime: string): Promise<string> {
   return new SignJWT({ userId: payload.userId, role: payload.role })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('1h')
+    .setExpirationTime(expirationTime)
     .setIssuedAt()
     .sign(getSecret());
 }
 
+export async function generateAccessToken(payload: TokenPayload): Promise<string> {
+  return signToken(payload, '1h');
+}
+
 export async function generateRefreshToken(payload: TokenPayload): Promise<string> {
-  return new SignJWT({ userId: payload.userId, role: payload.role })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('7d')
-    .setIssuedAt()
-    .sign(getSecret());
+  return signToken(payload, '7d');
 }
 
 export async function verifyToken(token: string): Promise<TokenPayload> {

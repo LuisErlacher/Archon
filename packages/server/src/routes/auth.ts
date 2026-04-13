@@ -19,6 +19,7 @@ import {
   authResponseSchema,
   refreshResponseSchema,
   userSchema,
+  type UserResponse,
 } from './schemas/auth.schemas';
 
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -34,13 +35,7 @@ function jsonError(description: string): {
   return { content: { 'application/json': { schema: errorSchema } }, description };
 }
 
-function sanitizeUser(user: User): {
-  id: string;
-  username: string;
-  displayName: string | null;
-  role: 'admin' | 'user';
-  createdAt: string;
-} {
+function sanitizeUser(user: User): UserResponse {
   return {
     id: user.id,
     username: user.username,
