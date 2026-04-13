@@ -99,6 +99,12 @@ function createMockStore(): IWorkflowStore {
     cancelWorkflowRun: mock(() => Promise.resolve()),
     createWorkflowEvent: mock(() => Promise.resolve()),
     getCompletedDagNodeOutputs: mock(() => Promise.resolve(new Map<string, string>())),
+    upsertNodeState: mock(() => Promise.resolve()),
+    getNodeState: mock(() => Promise.resolve(null)),
+    getNodeStates: mock(() => Promise.resolve([])),
+    getValidatedNodeOutputs: mock(() => Promise.resolve(new Map<string, string>())),
+    createTestResult: mock(() => Promise.resolve()),
+    getTestResults: mock(() => Promise.resolve([])),
     getCodebase: mock(() => Promise.resolve(null)),
     getCodebaseEnvVars: mock(() => Promise.resolve({})),
   };
