@@ -9,7 +9,7 @@ import type { WebAdapter } from '../adapters/web';
 import { rm, readFile, writeFile, unlink, mkdir } from 'fs/promises';
 import { readFileSync } from 'fs';
 import { normalize, join, sep, basename } from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import type { Context } from 'hono';
 import type {
   ConversationLockManager,
@@ -884,6 +884,33 @@ export function registerApiRoutes(
   // CORS for Web UI — allow-all is fine for a single-developer tool.
   // Override with WEB_UI_ORIGIN env var to restrict if exposing publicly.
   app.use('/api/*', cors({ origin: process.env.WEB_UI_ORIGIN || '*' }));
+
+  // Optional Web UI auth. When WEB_UI_PASSWORD is set, all /api/* requests must
+  // carry a Bearer token. Routes that must remain public (health, login, status,
+  // SSE streams) are explicitly exempted.
+  const webUiPassword = process.env.WEB_UI_PASSWORD;
+  if (webUiPassword) {
+    const expectedToken = createHmac('sha256', webUiPassword)
+      .update('archon-web-session')
+      .digest('hex');
+
+    app.use('/api/*', async (c, next) => {
+      const path = new URL(c.req.url).pathname;
+      if (
+        path === '/api/health' ||
+        path.startsWith('/api/auth/') ||
+        path.startsWith('/api/stream/')
+      ) {
+        return next();
+      }
+      const authHeader = c.req.header('Authorization') ?? '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+      if (token !== expectedToken) {
+        return c.json({ error: 'Unauthorized' }, 401);
+      }
+      return next();
+    });
+  }
 
   // Shared lock/dispatch/error handling for message and workflow endpoints
   /** Maximum allowed upload size per file (10 MB) */
@@ -2620,5 +2647,29 @@ export function registerApiRoutes(
     if (!BUNDLED_IS_BINARY) return c.json(noUpdate);
     const result = await checkForUpdate(appVersion);
     return c.json(result ?? noUpdate);
+  });
+
+  // Auth: POST /api/auth/login
+  app.post('/api/auth/login', async c => {
+    if (!webUiPassword) {
+      return c.json({ error: 'Auth not configured' }, 404);
+    }
+    const body = await c.req.json<{ password?: unknown }>();
+    if (typeof body.password !== 'string' || !body.password) {
+      return c.json({ error: 'password required' }, 400);
+    }
+    const provided = Buffer.from(body.password, 'utf8');
+    const expected = Buffer.from(webUiPassword, 'utf8');
+    const matches = provided.length === expected.length && timingSafeEqual(provided, expected);
+    if (!matches) {
+      return c.json({ error: 'Invalid password' }, 401);
+    }
+    const token = createHmac('sha256', webUiPassword).update('archon-web-session').digest('hex');
+    return c.json({ token });
+  });
+
+  // Auth: GET /api/auth/status
+  app.get('/api/auth/status', c => {
+    return c.json({ enabled: Boolean(webUiPassword) });
   });
 }

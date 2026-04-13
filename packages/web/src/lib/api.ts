@@ -57,8 +57,25 @@ export interface HealthResponse {
   is_docker: boolean;
 }
 
+function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem('archon-auth-token');
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
+  const token = getStoredToken();
+  const headers = new Headers(options?.headers);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
   if (!res.ok) {
     const body = await res.text();
     const truncated = body.length > 200 ? body.slice(0, 200) + '...' : body;
