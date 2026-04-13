@@ -100,6 +100,8 @@ import {
   nodeCompleteBodySchema,
   nodeGateResultBodySchema,
   nodeActionResponseSchema,
+  workflowEventsQuerySchema,
+  workflowEventsResponseSchema,
 } from './schemas/workflow.schemas';
 import {
   runSummaryResponseSchema,
@@ -860,6 +862,29 @@ const nodeGateResultRoute = createRoute({
       description: 'Gate result recorded',
     },
     400: jsonError('Bad request'),
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+// =========================================================================
+// Audit trail route configs
+// =========================================================================
+
+const getWorkflowRunEventsRoute = createRoute({
+  method: 'get',
+  path: '/api/workflows/runs/{runId}/events',
+  tags: ['Workflows'],
+  summary: 'List workflow run events with pagination',
+  request: {
+    params: z.object({ runId: z.string() }),
+    query: workflowEventsQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: workflowEventsResponseSchema } },
+      description: 'Paginated workflow events',
+    },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
   },
@@ -2552,6 +2577,34 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error }, 'get_run_summary_failed');
       return apiError(c, 500, 'Failed to get run summary');
+    }
+  });
+
+  // GET /api/workflows/runs/:runId/events - Paginated events listing
+  registerOpenApiRoute(getWorkflowRunEventsRoute, async c => {
+    try {
+      const runId = c.req.param('runId') ?? '';
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) {
+        return apiError(c, 404, 'Workflow run not found');
+      }
+
+      const limitStr = c.req.query('limit');
+      const offsetStr = c.req.query('offset');
+      const eventType = c.req.query('event_type');
+
+      const limit = Math.min(Math.max(Number(limitStr) || 50, 1), 200);
+      const offset = Math.max(Number(offsetStr) || 0, 0);
+
+      const [events, total] = await Promise.all([
+        workflowEventDb.listWorkflowEventsPaginated(runId, limit, offset, eventType),
+        workflowEventDb.countWorkflowEvents(runId, eventType),
+      ]);
+
+      return c.json({ events, total, limit, offset });
+    } catch (error) {
+      getLog().error({ err: error }, 'get_workflow_run_events_failed');
+      return apiError(c, 500, 'Failed to get workflow run events');
     }
   });
 
