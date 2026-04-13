@@ -1,0 +1,59 @@
+# Development override — hot-reload inside Docker
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Source code mounted from host with node_modules in named volumes.
+# Backend: bun --watch (auto-restart on file changes)
+# Frontend: run `bun run dev:web` on host (connects to Docker backend on port 3000)
+
+services:
+  app:
+    build:
+      context: .
+      target: deps              # Stop at Stage 1 (deps only, skip web-build + production)
+    entrypoint: []              # Override docker-entrypoint.sh (not present in deps stage)
+    command:
+      - sh
+      - -c
+      - |
+        echo "Installing dependencies..." &&
+        bun install --frozen-lockfile --linker=hoisted &&
+        echo "Starting dev server..." &&
+        bun run dev:server
+    working_dir: /app
+    env_file: .env
+    volumes:
+      - .:/app                                  # Mount full source
+      - dev_nm_root:/app/node_modules           # Root node_modules (Linux deps)
+      - dev_nm_adapters:/app/packages/adapters/node_modules
+      - dev_nm_cli:/app/packages/cli/node_modules
+      - dev_nm_core:/app/packages/core/node_modules
+      - dev_nm_git:/app/packages/git/node_modules
+      - dev_nm_isolation:/app/packages/isolation/node_modules
+      - dev_nm_paths:/app/packages/paths/node_modules
+      - dev_nm_server:/app/packages/server/node_modules
+      - dev_nm_web:/app/packages/web/node_modules
+      - dev_nm_workflows:/app/packages/workflows/node_modules
+      - dev_nm_docsweb:/app/packages/docs-web/node_modules
+      - ${ARCHON_DATA:-archon_data}:/.archon
+    environment:
+      WEB_UI_DEV: "true"        # Skip serveStatic — use vite dev server on host
+      ARCHON_DOCKER: "true"
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    networks:
+      - archon-network
+    restart: unless-stopped
+
+volumes:
+  dev_nm_root:
+  dev_nm_adapters:
+  dev_nm_cli:
+  dev_nm_core:
+  dev_nm_git:
+  dev_nm_isolation:
+  dev_nm_paths:
+  dev_nm_server:
+  dev_nm_web:
+  dev_nm_workflows:
+  dev_nm_docsweb:
