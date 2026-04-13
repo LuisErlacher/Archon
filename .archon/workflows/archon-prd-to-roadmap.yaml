@@ -1,0 +1,183 @@
+name: archon-prd-to-roadmap
+description: |
+  Use when: You have a PRD (docs/PRD.md) and want to extract a prioritized roadmap of implementable features.
+  Triggers: "prd to roadmap", "extract roadmap", "create roadmap from prd", "roadmap from prd".
+  Does: Reads PRD + codebase state -> extracts FRs grouped by phase -> cross-references with
+        existing GitHub issues -> produces ROADMAP.md with prioritized features ready for execution.
+  NOT for: Implementing features (use archon-gsd-feature), creating PRDs from scratch.
+
+  GSD-inspired workflow: spec-driven extraction with artifact-based state.
+  Each node uses fresh context to prevent context rot.
+
+provider: claude
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: EXTRACT — Parse PRD into structured features
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: extract-features
+    prompt: |
+      You are a technical product analyst. Read the PRD and extract ALL implementable features.
+
+      ## Instructions
+
+      1. Read `docs/PRD.md` completely
+      2. Read `CLAUDE.md` to understand current codebase state
+      3. Extract every Functional Requirement (FR01-FR55) from the PRD
+      4. Group them by the PRD's Phased Development sections (Phase 1-5)
+      5. For each FR, determine:
+         - Current status: EXISTS (already in codebase), PARTIAL (partially done), MISSING (not started)
+         - Dependencies on other FRs
+         - Estimated complexity: S (< 1 day), M (1-3 days), L (3-5 days), XL (5+ days)
+
+      ## Output
+
+      Write a structured analysis to `$ARTIFACTS_DIR/feature-extraction.md` with:
+      - Total FRs by status (EXISTS/PARTIAL/MISSING)
+      - Feature list grouped by phase with status and complexity
+      - Dependency graph (which FRs block others)
+      - Recommended implementation order within each phase
+    context: fresh
+    denied_tools: [Write, Edit, Bash]
+    hooks:
+      PostToolUse:
+        - matcher: "Read"
+          response:
+            hookSpecificOutput:
+              hookEventName: PostToolUse
+              additionalContext: >
+                For each FR you identify in this file, check: does this capability
+                ALREADY EXIST in the Archon codebase? Check CLAUDE.md's architecture
+                section, existing API routes, and database tables. Mark as EXISTS if
+                fully implemented, PARTIAL if partially done, MISSING if not started.
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: CROSS-REFERENCE — Match with GitHub issues
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fetch-issues
+    bash: |
+      echo "=== OPEN ISSUES ==="
+      gh issue list --repo LuisErlacher/Archon --state open --json number,title,body --limit 50 2>/dev/null || echo "Failed to fetch issues"
+      echo ""
+      echo "=== CLOSED ISSUES ==="
+      gh issue list --repo LuisErlacher/Archon --state closed --json number,title --limit 20 2>/dev/null || echo "Failed to fetch closed issues"
+    depends_on: [extract-features]
+    timeout: 30000
+
+  - id: map-issues-to-features
+    prompt: |
+      You are mapping GitHub issues to PRD features to avoid duplication.
+
+      ## Feature Extraction
+      $extract-features.output
+
+      ## GitHub Issues
+      $fetch-issues.output
+
+      ## Instructions
+
+      1. For each extracted feature (FR), find matching GitHub issues
+      2. Identify:
+         - FRs with matching issues (tracked)
+         - FRs WITHOUT issues (untracked — need new issues)
+         - Issues that don't map to any FR (orphan issues — may need review)
+      3. For tracked FRs, note the issue number and its current state (open/closed)
+
+      ## Output
+
+      Write mapping to `$ARTIFACTS_DIR/issue-mapping.md`:
+      - Table: FR | Description | Issue # | Issue Status | FR Status
+      - Section: Untracked FRs (need issues created)
+      - Section: Orphan issues (review needed)
+    depends_on: [extract-features, fetch-issues]
+    context: fresh
+    allowed_tools: [Read]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: PRIORITIZE — Build implementation roadmap
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: build-roadmap
+    prompt: |
+      You are building an actionable implementation roadmap from the PRD analysis.
+
+      ## Feature Extraction
+      $extract-features.output
+
+      ## Issue Mapping
+      $map-issues-to-features.output
+
+      ## Prioritization Rules
+
+      1. **Phase 1 (Foundation)** features first — they unblock everything else
+      2. Within each phase, order by: dependencies resolved → complexity (S first) → impact
+      3. Skip features marked as EXISTS (already done)
+      4. PARTIAL features before MISSING (less work to complete)
+      5. Group into implementable batches (3-5 features per batch that can be done together)
+      6. Each batch should produce a testable, shippable increment
+
+      ## Instructions
+
+      1. Read the feature extraction and issue mapping
+      2. Build a prioritized roadmap with batches
+      3. For each batch:
+         - List the FRs included
+         - Estimated total effort
+         - What it unblocks
+         - Acceptance criteria (how to verify the batch is done)
+         - GitHub issues to update/create
+      4. Write the roadmap to `docs/ROADMAP.md` in the project root
+
+      ## Output Format (docs/ROADMAP.md)
+
+      ```markdown
+      # Archon AI Dark Factory — Implementation Roadmap
+
+      Generated: [date]
+      Source: docs/PRD.md
+
+      ## Batch 1: [Name] (Phase X)
+      **Effort:** S/M/L | **Unblocks:** [list]
+
+      ### Features
+      - [ ] FR01: [description] — Issue #N (status)
+      - [ ] FR02: [description] — NEW ISSUE NEEDED
+
+      ### Acceptance Criteria
+      - [ ] [criterion 1]
+      - [ ] [criterion 2]
+
+      ---
+      ## Batch 2: ...
+      ```
+    depends_on: [map-issues-to-features]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 4: SUMMARY — Report what was produced
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: summary
+    prompt: |
+      Summarize the roadmap creation results.
+
+      ## Artifacts Created
+      - Feature extraction: $extract-features.output
+      - Issue mapping: $map-issues-to-features.output
+      - Roadmap: $build-roadmap.output
+
+      ## Instructions
+
+      Provide a concise summary:
+      1. Total features extracted from PRD
+      2. How many already exist vs need implementation
+      3. Number of batches in the roadmap
+      4. Recommended first batch to start with
+      5. Any issues that need to be created on GitHub
+
+      Keep it under 30 lines. This is the final output the user sees.
+    depends_on: [build-roadmap]
+    context: fresh
+    allowed_tools: []
