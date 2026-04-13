@@ -142,15 +142,18 @@ export const workflowRunByWorkerResponseSchema = z
   .object({ run: workflowRunSchema })
   .openapi('WorkflowRunByWorkerResponse');
 
+/** Shared base for all action responses that return { success, message }. */
+const actionResponseBaseSchema = z.object({ success: z.boolean(), message: z.string() });
+
 /** POST /api/workflows/runs/:runId/cancel response. */
-export const cancelWorkflowRunResponseSchema = z
-  .object({ success: z.boolean(), message: z.string() })
-  .openapi('CancelWorkflowRunResponse');
+export const cancelWorkflowRunResponseSchema = actionResponseBaseSchema.openapi(
+  'CancelWorkflowRunResponse'
+);
 
 /** Generic workflow run action response (resume, abandon, delete). */
-export const workflowRunActionResponseSchema = z
-  .object({ success: z.boolean(), message: z.string() })
-  .openapi('WorkflowRunActionResponse');
+export const workflowRunActionResponseSchema = actionResponseBaseSchema.openapi(
+  'WorkflowRunActionResponse'
+);
 
 /** POST /api/workflows/runs/:runId/approve request body. */
 export const approveWorkflowRunBodySchema = z
@@ -253,6 +256,4 @@ export const nodeGateResultBodySchema = z
   .openapi('NodeGateResultBody');
 
 /** Generic node action response (node complete, gate result). */
-export const nodeActionResponseSchema = z
-  .object({ success: z.boolean(), message: z.string() })
-  .openapi('NodeActionResponse');
+export const nodeActionResponseSchema = actionResponseBaseSchema.openapi('NodeActionResponse');

@@ -2136,7 +2136,7 @@ export function registerApiRoutes(
             : run.last_activity_at,
         nodes_completed: nodesCompleted,
         nodes_failed: nodesFailed,
-        nodes_total: (run.metadata.total_nodes as number | undefined) ?? null,
+        nodes_total: typeof run.metadata.total_nodes === 'number' ? run.metadata.total_nodes : null,
       });
     } catch (error) {
       getLog().error({ err: error, runId }, 'api.workflow_run_summary_failed');
@@ -2181,6 +2181,9 @@ export function registerApiRoutes(
     try {
       const run = await workflowDb.getWorkflowRun(runId);
       if (!run) return apiError(c, 404, 'Workflow run not found');
+      if (run.status !== 'running') {
+        return apiError(c, 400, `Cannot record gate result on workflow in '${run.status}' status`);
+      }
       const body = getValidatedBody(c, nodeGateResultBodySchema);
       await workflowEventDb.createWorkflowEvent({
         workflow_run_id: runId,
