@@ -219,6 +219,10 @@ export async function listConversations(
   return result.rows;
 }
 
+/**
+ * Returns only conversations owned by the given user (via user_id).
+ * Admins use listConversations(). Supports optional filtering by platform type and codebase.
+ */
 export async function listConversationsForUser(
   userId: string,
   limit = 50,
@@ -265,7 +269,8 @@ export async function touchConversation(id: string): Promise<void> {
 }
 
 /**
- * Update conversation title
+ * Assign a user as the owner of a conversation.
+ * Called once after conversation creation to establish user_id for scoped listing.
  */
 export async function setConversationUserId(id: string, userId: string): Promise<void> {
   const dialect = getDialect();
@@ -275,6 +280,9 @@ export async function setConversationUserId(id: string, userId: string): Promise
   );
 }
 
+/**
+ * Update conversation title
+ */
 export async function updateConversationTitle(id: string, title: string): Promise<void> {
   const dialect = getDialect();
   const result = await pool.query(
