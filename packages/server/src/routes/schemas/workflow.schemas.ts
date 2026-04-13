@@ -17,8 +17,8 @@ export const workflowLoadErrorSchema = z
   })
   .openapi('WorkflowLoadError');
 
-/** Workflow source — project-defined or bundled default. */
-export const workflowSourceSchema = z.enum(['project', 'bundled']).openapi('WorkflowSource');
+/** Workflow source — project-defined, bundled default, or database-stored. */
+export const workflowSourceSchema = z.enum(['project', 'bundled', 'db']).openapi('WorkflowSource');
 
 /** A workflow entry in the list response, including its source. */
 export const workflowListEntrySchema = z
@@ -223,3 +223,21 @@ export const workflowRunsQuerySchema = z.object({
   codebaseId: z.string().optional(),
   limit: z.string().optional(),
 });
+
+// =========================================================================
+// Workflow import/export schemas
+// =========================================================================
+
+/** POST /api/workflows/import request body — raw YAML text. */
+export const importWorkflowBodySchema = z
+  .object({ yaml: z.string().min(1) })
+  .openapi('ImportWorkflowBody');
+
+/** POST /api/workflows/import response. */
+export const importWorkflowResponseSchema = z
+  .object({
+    workflow: workflowDefinitionSchema,
+    filename: z.string(),
+    source: workflowSourceSchema,
+  })
+  .openapi('ImportWorkflowResponse');

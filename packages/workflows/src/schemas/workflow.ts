@@ -93,7 +93,7 @@ export type WorkflowExecutionResult =
 // ---------------------------------------------------------------------------
 
 /** Workflow origin — bundled default or project-defined. */
-export type WorkflowSource = 'bundled' | 'project';
+export type WorkflowSource = 'bundled' | 'project' | 'db';
 
 /** A workflow definition paired with its discovery source. */
 export interface WorkflowWithSource {

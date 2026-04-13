@@ -13,13 +13,15 @@ import { configureIsolation, getIsolationProvider } from '@archon/isolation';
 import { createLogger, getArchonHome } from '@archon/paths';
 import { createWorkflowDeps } from '@archon/core/workflows/store-adapter';
 import { discoverWorkflowsWithConfig } from '@archon/workflows/workflow-discovery';
+import { parseWorkflow } from '@archon/workflows/loader';
+import * as workflowDefinitionsDb from '@archon/core/db/workflow-definitions';
 import { resolveWorkflowName } from '@archon/workflows/router';
 import { executeWorkflow } from '@archon/workflows/executor';
 import {
   getWorkflowEventEmitter,
   type WorkflowEmitterEvent,
 } from '@archon/workflows/event-emitter';
-import type { WorkflowLoadResult } from '@archon/workflows/schemas/workflow';
+import type { WorkflowLoadResult, WorkflowWithSource } from '@archon/workflows/schemas/workflow';
 import type { WorkflowRun } from '@archon/workflows/schemas/workflow-run';
 import {
   approveWorkflow,
@@ -120,9 +122,21 @@ function renderWorkflowEvent(event: WorkflowEmitterEvent, verbose: boolean): voi
  * Returns the WorkflowLoadResult with both workflows and errors.
  */
 async function loadWorkflows(cwd: string): Promise<WorkflowLoadResult> {
+  const getDbWorkflows = async (): Promise<WorkflowWithSource[]> => {
+    const records = await workflowDefinitionsDb.listWorkflowDefinitions();
+    const results: WorkflowWithSource[] = [];
+    for (const record of records) {
+      const parsed = parseWorkflow(record.definition, `${record.name}.yaml`);
+      if (parsed.error) continue;
+      results.push({ workflow: parsed.workflow, source: 'db' });
+    }
+    return results;
+  };
+
   try {
     return await discoverWorkflowsWithConfig(cwd, loadConfig, {
       globalSearchPath: getArchonHome(),
+      getDbWorkflows,
     });
   } catch (error) {
     const err = error as Error;

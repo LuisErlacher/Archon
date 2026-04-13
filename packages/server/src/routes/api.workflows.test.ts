@@ -92,6 +92,26 @@ mock.module('@archon/core/db/workflows', () => ({}));
 mock.module('@archon/core/db/workflow-events', () => ({}));
 mock.module('@archon/core/db/messages', () => ({}));
 
+const mockUpsertWorkflowDefinition = mock(async (data: { name: string }) => ({
+  id: 'test-uuid',
+  name: data.name,
+  description: null,
+  definition: '{}',
+  source: 'user',
+  codebase_id: null,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+}));
+const mockGetWorkflowDefinition = mock(async () => null);
+const mockListWorkflowDefinitions = mock(async () => []);
+const mockDeleteWorkflowDefinition = mock(async () => false);
+mock.module('@archon/core/db/workflow-definitions', () => ({
+  upsertWorkflowDefinition: mockUpsertWorkflowDefinition,
+  getWorkflowDefinition: mockGetWorkflowDefinition,
+  listWorkflowDefinitions: mockListWorkflowDefinitions,
+  deleteWorkflowDefinition: mockDeleteWorkflowDefinition,
+}));
+
 const mockListCodebases = mock(async () => [{ default_cwd: '/tmp/project' }]);
 mock.module('@archon/core/db/codebases', () => ({
   listCodebases: mockListCodebases,
@@ -116,7 +136,11 @@ describe('GET /api/workflows', () => {
     expect(body.workflows[0]?.workflow.name).toBe('deploy');
     expect(body.workflows[0]?.source).toBe('bundled');
     expect(body.workflows.workflows).toBeUndefined();
-    expect(mockDiscoverWorkflows).toHaveBeenCalledWith('/tmp/project', expect.any(Function));
+    expect(mockDiscoverWorkflows).toHaveBeenCalledWith(
+      '/tmp/project',
+      expect.any(Function),
+      expect.objectContaining({ getDbWorkflows: expect.any(Function) })
+    );
     expect(body.errors).toBeDefined();
     expect(Array.isArray(body.errors)).toBe(true);
   });
@@ -314,38 +338,29 @@ describe('PUT /api/workflows/:name', () => {
     expect(body.error).toContain('definition');
   });
 
-  test('falls back to getArchonHome() when no cwd and no codebases registered', async () => {
-    const testArchonHome = join(tmpdir(), `archon-home-test-${Date.now()}`);
-    process.env.ARCHON_HOME = testArchonHome;
+  test('saves workflow to database and returns source:db', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
 
-    try {
-      const app = createTestApp();
-      registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+    mockParseWorkflow.mockReturnValueOnce({
+      workflow: makeTestWorkflow({ name: 'my-workflow', description: 'test' }),
+      error: null,
+    });
 
-      mockListCodebases.mockImplementationOnce(async () => []);
-      mockParseWorkflow.mockReturnValueOnce({
-        workflow: makeTestWorkflow({ name: 'my-workflow', description: 'test' }),
-        error: null,
-      });
-
-      const response = await app.request('/api/workflows/my-workflow', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          definition: {
-            name: 'my-workflow',
-            description: 'test',
-            nodes: [{ id: 'n1', command: 'assist' }],
-          },
-        }),
-      });
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as { workflow: object; source: string };
-      expect(body.source).toBe('project');
-    } finally {
-      delete process.env.ARCHON_HOME;
-      await rm(testArchonHome, { recursive: true, force: true });
-    }
+    const response = await app.request('/api/workflows/my-workflow', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        definition: {
+          name: 'my-workflow',
+          description: 'test',
+          nodes: [{ id: 'n1', command: 'assist' }],
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { workflow: object; source: string };
+    expect(body.source).toBe('db');
   });
 
   test('returns 400 when definition fails validation', async () => {
@@ -372,38 +387,31 @@ describe('PUT /api/workflows/:name', () => {
     expect(body.detail).toBeDefined();
   });
 
-  test('saves valid workflow and returns parsed workflow with source:project', async () => {
-    const testDir = join(tmpdir(), `wf-put-test-${Date.now()}`);
+  test('saves valid workflow to DB and returns parsed workflow with source:db', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
 
-    try {
-      const app = createTestApp();
-      registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+    const response = await app.request('/api/workflows/my-workflow', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        definition: {
+          name: 'my-workflow',
+          description: 'Test',
+          nodes: [{ id: 'plan', command: 'plan' }],
+        },
+      }),
+    });
 
-      mockListCodebases.mockImplementationOnce(async () => [{ default_cwd: testDir }]);
-      const response = await app.request(`/api/workflows/my-workflow?cwd=${testDir}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          definition: {
-            name: 'my-workflow',
-            description: 'Test',
-            nodes: [{ id: 'plan', command: 'plan' }],
-          },
-        }),
-      });
-
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as {
-        workflow: { name: string };
-        filename: string;
-        source: string;
-      };
-      expect(body.workflow).toBeDefined();
-      expect(body.filename).toBe('my-workflow.yaml');
-      expect(body.source).toBe('project');
-    } finally {
-      await rm(testDir, { recursive: true, force: true });
-    }
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      workflow: { name: string };
+      filename: string;
+      source: string;
+    };
+    expect(body.workflow).toBeDefined();
+    expect(body.filename).toBe('my-workflow.yaml');
+    expect(body.source).toBe('db');
   });
 });
 
@@ -432,44 +440,32 @@ describe('DELETE /api/workflows/:name', () => {
     expect(body.error).toContain('test-nonexistent-workflow-xyz');
   });
 
-  test('falls back to getArchonHome() when no cwd and no codebases, returns 404 for missing file', async () => {
+  test('returns 404 when workflow not found in database', async () => {
     const app = createTestApp();
     registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
 
-    mockListCodebases.mockImplementationOnce(async () => []);
+    mockDeleteWorkflowDefinition.mockResolvedValueOnce(false);
 
-    const response = await app.request('/api/workflows/nonexistent-no-cwd-test', {
+    const response = await app.request('/api/workflows/nonexistent-workflow', {
       method: 'DELETE',
     });
     expect(response.status).toBe(404);
     const body = (await response.json()) as { error: string };
-    expect(body.error).toContain('nonexistent-no-cwd-test');
+    expect(body.error).toContain('nonexistent-workflow');
   });
 
-  test('removes existing workflow file and returns deleted:true', async () => {
-    const testDir = join(tmpdir(), `wf-del-test-${Date.now()}`);
-    const workflowDir = join(testDir, '.archon', 'workflows');
-    await mkdir(workflowDir, { recursive: true });
-    await writeFile(
-      join(workflowDir, 'to-delete.yaml'),
-      'name: x\ndescription: y\nnodes:\n  - id: z\n    command: z\n'
-    );
+  test('removes DB workflow and returns deleted:true', async () => {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
 
-    try {
-      const app = createTestApp();
-      registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
-
-      mockListCodebases.mockImplementationOnce(async () => [{ default_cwd: testDir }]);
-      const response = await app.request(`/api/workflows/to-delete?cwd=${testDir}`, {
-        method: 'DELETE',
-      });
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as { deleted: boolean; name: string };
-      expect(body.deleted).toBe(true);
-      expect(body.name).toBe('to-delete');
-    } finally {
-      await rm(testDir, { recursive: true, force: true });
-    }
+    mockDeleteWorkflowDefinition.mockResolvedValueOnce(true);
+    const response = await app.request('/api/workflows/to-delete', {
+      method: 'DELETE',
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { deleted: boolean; name: string };
+    expect(body.deleted).toBe(true);
+    expect(body.name).toBe('to-delete');
   });
 });
 
@@ -495,8 +491,8 @@ describe('GET /api/workflows - cwd validation', () => {
   });
 });
 
-describe('PUT /api/workflows/:name - cwd validation', () => {
-  test('returns 400 when cwd is not a registered codebase path', async () => {
+describe('PUT /api/workflows/:name - DB storage', () => {
+  test('ignores cwd param and saves to DB (cwd no longer relevant)', async () => {
     const app = createTestApp();
     registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
 
@@ -505,23 +501,24 @@ describe('PUT /api/workflows/:name - cwd validation', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ definition: { name: 'my-workflow', description: 'test', nodes: [] } }),
     });
-    expect(response.status).toBe(400);
-    const body = (await response.json()) as { error: string };
-    expect(body.error).toContain('Invalid cwd');
+    // PUT now saves to DB regardless of cwd
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { source: string };
+    expect(body.source).toBe('db');
   });
 });
 
-describe('DELETE /api/workflows/:name - cwd validation', () => {
-  test('returns 400 when cwd is not a registered codebase path', async () => {
+describe('DELETE /api/workflows/:name - DB storage', () => {
+  test('ignores cwd param and deletes from DB', async () => {
     const app = createTestApp();
     registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
 
+    // Not found in DB → 404
+    mockDeleteWorkflowDefinition.mockResolvedValueOnce(false);
     const response = await app.request('/api/workflows/some-workflow?cwd=/etc/secrets', {
       method: 'DELETE',
     });
-    expect(response.status).toBe(400);
-    const body = (await response.json()) as { error: string };
-    expect(body.error).toContain('Invalid cwd');
+    expect(response.status).toBe(404);
   });
 });
 

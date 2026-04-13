@@ -363,6 +363,18 @@ export class SqliteAdapter implements IDatabase {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      -- Workflow definitions table (DB-backed workflow storage)
+      CREATE TABLE IF NOT EXISTS remote_agent_workflow_definitions (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT,
+        definition TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'user',
+        codebase_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       -- Indexes
       CREATE INDEX IF NOT EXISTS idx_codebase_env_vars_codebase_id ON remote_agent_codebase_env_vars(codebase_id);
       CREATE INDEX IF NOT EXISTS idx_conversations_platform ON remote_agent_conversations(platform_type, platform_conversation_id);
@@ -382,6 +394,10 @@ export class SqliteAdapter implements IDatabase {
       CREATE INDEX IF NOT EXISTS idx_conversations_isolation_env_id ON remote_agent_conversations(isolation_env_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_codebase ON remote_agent_sessions(codebase_id);
       CREATE INDEX IF NOT EXISTS idx_isolation_env_status ON remote_agent_isolation_environments(status);
+
+      CREATE INDEX IF NOT EXISTS idx_workflow_definitions_name ON remote_agent_workflow_definitions(name);
+      CREATE INDEX IF NOT EXISTS idx_workflow_definitions_codebase_id
+        ON remote_agent_workflow_definitions(codebase_id) WHERE codebase_id IS NOT NULL;
 
       -- From PG migration 009: staleness detection for running workflows
       CREATE INDEX IF NOT EXISTS idx_workflow_runs_last_activity

@@ -291,7 +291,7 @@ export async function discoverWorkflows(
 export async function discoverWorkflowsWithConfig(
   cwd: string,
   loadConfig: (cwd: string) => Promise<{ defaults?: { loadDefaultWorkflows?: boolean } }>,
-  options?: { globalSearchPath?: string }
+  options?: { globalSearchPath?: string; getDbWorkflows?: () => Promise<WorkflowWithSource[]> }
 ): Promise<WorkflowLoadResult> {
   let loadDefaults = true;
   try {
@@ -303,5 +303,26 @@ export async function discoverWorkflowsWithConfig(
       'config_load_failed_using_default_workflow_discovery'
     );
   }
-  return discoverWorkflows(cwd, { ...options, loadDefaults });
+  const base = await discoverWorkflows(cwd, { ...options, loadDefaults });
+
+  if (!options?.getDbWorkflows) return base;
+
+  let dbWorkflows: WorkflowWithSource[] = [];
+  try {
+    dbWorkflows = await options.getDbWorkflows();
+  } catch (error) {
+    getLog().warn({ err: error as Error }, 'workflow.db_discovery_failed');
+    return base;
+  }
+
+  // Merge: DB overrides same-named filesystem workflows (highest priority)
+  const merged = new Map<string, WorkflowWithSource>();
+  for (const entry of base.workflows) {
+    merged.set(entry.workflow.name, entry);
+  }
+  for (const entry of dbWorkflows) {
+    merged.set(entry.workflow.name, entry);
+  }
+
+  return { workflows: Array.from(merged.values()), errors: base.errors };
 }

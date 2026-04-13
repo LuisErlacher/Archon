@@ -45,6 +45,7 @@ import {
   BUNDLED_IS_BINARY,
 } from '@archon/paths';
 import { discoverWorkflowsWithConfig } from '@archon/workflows/workflow-discovery';
+import type { WorkflowWithSource } from '@archon/workflows/schemas/workflow';
 import { parseWorkflow } from '@archon/workflows/loader';
 import { isValidCommandName } from '@archon/workflows/command-validation';
 import { BUNDLED_WORKFLOWS, BUNDLED_COMMANDS, isBinaryBuild } from '@archon/workflows/defaults';
@@ -66,6 +67,7 @@ import * as codebaseDb from '@archon/core/db/codebases';
 import * as envVarDb from '@archon/core/db/env-vars';
 import * as isolationEnvDb from '@archon/core/db/isolation-environments';
 import * as workflowDb from '@archon/core/db/workflows';
+import * as workflowDefinitionsDb from '@archon/core/db/workflow-definitions';
 import * as workflowEventDb from '@archon/core/db/workflow-events';
 import * as messageDb from '@archon/core/db/messages';
 import { errorSchema } from './schemas/common.schemas';
@@ -89,6 +91,8 @@ import {
   workflowRunsQuerySchema,
   approveWorkflowRunBodySchema,
   rejectWorkflowRunBodySchema,
+  importWorkflowBodySchema,
+  importWorkflowResponseSchema,
 } from './schemas/workflow.schemas';
 import {
   conversationListResponseSchema,
@@ -136,7 +140,7 @@ try {
   );
 }
 
-type WorkflowSource = 'project' | 'bundled';
+type WorkflowSource = 'project' | 'bundled' | 'db';
 
 // =========================================================================
 // OpenAPI route configs (module-scope — pure config, no runtime dependencies)
@@ -186,6 +190,44 @@ const validateWorkflowRoute = createRoute({
     },
     400: jsonError('Bad request'),
     500: jsonError('Server error'),
+  },
+});
+
+const importWorkflowRoute = createRoute({
+  method: 'post',
+  path: '/api/workflows/import',
+  tags: ['Workflows'],
+  summary: 'Import a workflow from raw YAML text into the database',
+  request: {
+    body: {
+      content: { 'application/json': { schema: importWorkflowBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: importWorkflowResponseSchema } },
+      description: 'Imported workflow',
+    },
+    400: jsonError('Invalid YAML'),
+  },
+});
+
+const exportWorkflowRoute = createRoute({
+  method: 'get',
+  path: '/api/workflows/{name}/export',
+  tags: ['Workflows'],
+  summary: 'Export a workflow as YAML text',
+  request: {
+    params: z.object({ name: z.string() }),
+    query: cwdQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { 'text/plain': { schema: z.string() } },
+      description: 'YAML export',
+    },
+    404: jsonError('Not found'),
   },
 });
 
@@ -1763,7 +1805,24 @@ export function registerApiRoutes(
         return c.json({ workflows: [] });
       }
 
-      const result = await discoverWorkflowsWithConfig(workingDir, loadConfig);
+      const getDbWorkflows = async (): Promise<WorkflowWithSource[]> => {
+        const records = await workflowDefinitionsDb.listWorkflowDefinitions();
+        const results: WorkflowWithSource[] = [];
+        for (const record of records) {
+          const parsed = parseWorkflow(record.definition, `${record.name}.yaml`);
+          if (parsed.error) {
+            getLog().warn(
+              { name: record.name, err: parsed.error.error },
+              'workflow.db_record_parse_failed'
+            );
+            continue;
+          }
+          results.push({ workflow: parsed.workflow, source: 'db' });
+        }
+        return results;
+      };
+
+      const result = await discoverWorkflowsWithConfig(workingDir, loadConfig, { getDbWorkflows });
       return c.json({
         workflows: result.workflows.map(ws => ({ workflow: ws.workflow, source: ws.source })),
         errors: result.errors.length > 0 ? result.errors : undefined,
@@ -2181,6 +2240,75 @@ export function registerApiRoutes(
     }
   });
 
+  // POST /api/workflows/import - Import a workflow from raw YAML into the database
+  // MUST be registered before GET /api/workflows/:name so "import" is not treated as :name
+  registerOpenApiRoute(importWorkflowRoute, async c => {
+    const { yaml } = getValidatedBody(c, importWorkflowBodySchema);
+    const parsed = parseWorkflow(yaml, 'import.yaml');
+    if (parsed.error) {
+      return apiError(c, 400, 'Invalid workflow YAML', parsed.error.error);
+    }
+
+    try {
+      await workflowDefinitionsDb.upsertWorkflowDefinition({
+        name: parsed.workflow.name,
+        description: parsed.workflow.description ?? null,
+        definition: JSON.stringify(parsed.workflow),
+        source: 'imported',
+        codebase_id: null,
+      });
+
+      return c.json({
+        workflow: parsed.workflow,
+        filename: `${parsed.workflow.name}.yaml`,
+        source: 'db' as WorkflowSource,
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      getLog().error({ err, name: parsed.workflow.name }, 'workflow.import_failed');
+      return apiError(c, 500, 'Failed to import workflow');
+    }
+  });
+
+  // GET /api/workflows/:name/export - Export a workflow as YAML text
+  // MUST be registered before GET /api/workflows/:name so "export" suffix is not treated as :name
+  registerOpenApiRoute(exportWorkflowRoute, async c => {
+    const name = c.req.param('name') ?? '';
+    const cwd = c.req.query('cwd') ?? '';
+
+    // Try DB first (highest priority)
+    try {
+      const dbRecord = await workflowDefinitionsDb.getWorkflowDefinition(name);
+      if (dbRecord) {
+        const definition = JSON.parse(dbRecord.definition) as unknown;
+        const yaml = Bun.YAML.stringify(definition);
+        return new Response(yaml, {
+          headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+        });
+      }
+    } catch (err) {
+      getLog().warn({ err, name }, 'workflow.export_db_lookup_failed');
+    }
+
+    // Fall back to filesystem discovery
+    try {
+      const result = await discoverWorkflowsWithConfig(cwd || getArchonHome(), loadConfig);
+      const entry = result.workflows.find(w => w.workflow.name === name);
+      if (!entry) {
+        return apiError(c, 404, `Workflow '${name}' not found`);
+      }
+
+      const yaml = Bun.YAML.stringify(entry.workflow);
+      return new Response(yaml, {
+        headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      getLog().error({ err, name }, 'workflow.export_failed');
+      return apiError(c, 500, 'Failed to export workflow');
+    }
+  });
+
   // GET /api/workflows/:name - Fetch a single workflow definition
   registerOpenApiRoute(getWorkflowRoute, async c => {
     const name = c.req.param('name') ?? '';
@@ -2201,6 +2329,24 @@ export function registerApiRoutes(
       }
 
       const filename = `${name}.yaml`;
+
+      // 0. Try DB-stored workflow (highest priority)
+      try {
+        const dbRecord = await workflowDefinitionsDb.getWorkflowDefinition(name);
+        if (dbRecord) {
+          const result = parseWorkflow(dbRecord.definition, filename);
+          if (result.error) {
+            return apiError(c, 500, `DB workflow is invalid: ${result.error.error}`);
+          }
+          return c.json({
+            workflow: result.workflow,
+            filename,
+            source: 'db' as WorkflowSource,
+          });
+        }
+      } catch (err) {
+        getLog().warn({ err, name }, 'workflow.db_lookup_failed');
+      }
 
       // 1. Try user-defined workflow in cwd
       if (workingDir) {
@@ -2264,30 +2410,16 @@ export function registerApiRoutes(
     }
   });
 
-  // PUT /api/workflows/:name - Save (create or update) a workflow
+  // PUT /api/workflows/:name - Save (create or update) a workflow to database
   registerOpenApiRoute(saveWorkflowRoute, async c => {
     const name = c.req.param('name') ?? '';
     if (!isValidCommandName(name)) {
       return apiError(c, 400, 'Invalid workflow name');
     }
 
-    const cwd = c.req.query('cwd');
-    let workingDir = cwd;
-    if (cwd) {
-      if (!(await validateCwd(cwd))) {
-        return apiError(c, 400, 'Invalid cwd: must match a registered codebase path');
-      }
-    } else {
-      const codebases = await codebaseDb.listCodebases();
-      if (codebases.length > 0) workingDir = codebases[0].default_cwd;
-    }
-    if (!workingDir) {
-      workingDir = getArchonHome();
-    }
-
     const { definition } = getValidatedBody(c, saveWorkflowBodySchema);
 
-    // Serialize and validate before writing
+    // Serialize and validate before saving
     let yamlContent: string;
     try {
       yamlContent = Bun.YAML.stringify(definition);
@@ -2303,24 +2435,26 @@ export function registerApiRoutes(
     }
 
     try {
-      const [workflowFolder] = getWorkflowFolderSearchPaths();
-      const dirPath = join(workingDir, workflowFolder);
-      await mkdir(dirPath, { recursive: true });
-      const filePath = join(dirPath, `${name}.yaml`);
-      await writeFile(filePath, yamlContent, 'utf-8');
+      await workflowDefinitionsDb.upsertWorkflowDefinition({
+        name,
+        description: parsed.workflow.description ?? null,
+        definition: JSON.stringify(parsed.workflow),
+        source: 'user',
+        codebase_id: null,
+      });
       return c.json({
         workflow: parsed.workflow,
         filename: `${name}.yaml`,
-        source: 'project' as WorkflowSource,
+        source: 'db' as WorkflowSource,
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      getLog().error({ err, name }, 'workflow.save_failed');
+      getLog().error({ err, name }, 'workflow.definition_save_failed');
       return apiError(c, 500, 'Failed to save workflow');
     }
   });
 
-  // DELETE /api/workflows/:name - Delete a user-defined workflow
+  // DELETE /api/workflows/:name - Delete a DB-stored workflow
   registerOpenApiRoute(deleteWorkflowRoute, async c => {
     const name = c.req.param('name') ?? '';
     if (!isValidCommandName(name)) {
@@ -2332,33 +2466,11 @@ export function registerApiRoutes(
       return apiError(c, 400, `Cannot delete bundled default workflow: ${name}`);
     }
 
-    const cwd = c.req.query('cwd');
-    let workingDir = cwd;
-    if (cwd) {
-      if (!(await validateCwd(cwd))) {
-        return apiError(c, 400, 'Invalid cwd: must match a registered codebase path');
-      }
-    } else {
-      const codebases = await codebaseDb.listCodebases();
-      if (codebases.length > 0) workingDir = codebases[0].default_cwd;
+    const deleted = await workflowDefinitionsDb.deleteWorkflowDefinition(name);
+    if (!deleted) {
+      return apiError(c, 404, `Workflow '${name}' not found in database`);
     }
-    if (!workingDir) {
-      workingDir = getArchonHome();
-    }
-
-    const [workflowFolder] = getWorkflowFolderSearchPaths();
-    const filePath = join(workingDir, workflowFolder, `${name}.yaml`);
-
-    try {
-      await unlink(filePath);
-      return c.json({ deleted: true, name });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return apiError(c, 404, `Workflow not found: ${name}`);
-      }
-      getLog().error({ err, name }, 'workflow.delete_failed');
-      return apiError(c, 500, 'Failed to delete workflow');
-    }
+    return c.json({ deleted: true, name });
   });
 
   // GET /api/commands - List available command names for the workflow node palette
