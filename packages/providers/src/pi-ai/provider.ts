@@ -80,7 +80,7 @@ const RETRY_BASE_DELAY_MS = 2000;
 const STREAM_IDLE_TIMEOUT_MS = 30_000;
 const GLOBAL_PROMPT_TIMEOUT_MS = 5 * 60 * 1000;
 /** Per-chunk timeout for the queue consumer (prevents stalls when the SSE stream hangs internally). */
-const CHUNK_ITERATION_TIMEOUT_MS = 5 * 60 * 1000;
+const CHUNK_ITERATION_TIMEOUT_MS = 10 * 60 * 1000;
 
 function truncateOutput(output: string): string {
   if (output.length <= MAX_TOOL_OUTPUT) return output;
