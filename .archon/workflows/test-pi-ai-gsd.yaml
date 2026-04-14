@@ -1,0 +1,85 @@
+name: test-pi-ai-gsd
+description: |
+  Test workflow for pi-ai client with GLM-5.1. Simplified GSD pipeline:
+  1. Research — explore codebase (read-only tools)
+  2. Plan — create task list (read-only)
+  3. Execute — implement with loop (all tools, hooks)
+  Validates: tools, tool filtering, hooks, thinking level, loop nodes.
+
+provider: pi-ai
+model: glm-5.1
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: RESEARCH — Read-only exploration (tests denied_tools)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: research
+    prompt: |
+      You are a senior engineer researching this codebase.
+
+      ## Task
+      $ARGUMENTS
+
+      ## Instructions
+
+      1. Read `CLAUDE.md` (or `AGENTS.md` if it exists) to understand the project
+      2. List the top-level directory structure using the `ls` tool
+      3. Find files related to the task using the `find` or `grep` tools
+      4. Summarize what you found in 3-5 bullet points
+
+      Keep your response brief and focused.
+    context: fresh
+    denied_tools: [write, edit]
+    thinking: adaptive
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: PLAN — Create a simple plan (read-only)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: plan
+    prompt: |
+      Based on the research findings, create a simple 2-3 step plan.
+
+      ## Research
+      $research.output
+
+      ## Task
+      $ARGUMENTS
+
+      ## Rules
+      - Max 3 tasks
+      - Each task: what to do, which file, how to verify
+      - Write the plan to `$ARTIFACTS_DIR/plan.md`
+    depends_on: [research]
+    context: fresh
+    allowed_tools: [read, write, find, ls]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: EXECUTE — Loop with hooks (tests loop + hooks)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: execute
+    loop:
+      prompt: |
+        Implement the plan step by step.
+
+        ## Plan
+        Read `$ARTIFACTS_DIR/plan.md`
+
+        ## Rules
+        - Follow the plan exactly
+        - After each edit, verify with the task's verify command
+        - When ALL tasks are done, signal COMPLETE
+
+        When done: <promise>COMPLETE</promise>
+      until: COMPLETE
+      max_iterations: 5
+    depends_on: [plan]
+    context: fresh
+    hooks:
+      PostToolUse:
+        - matcher: "write|edit"
+          response:
+            systemMessage: >
+              File modified. Run type-check: `bun run type-check`

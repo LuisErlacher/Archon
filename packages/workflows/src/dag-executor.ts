@@ -424,6 +424,7 @@ async function resolveNodeProviderAndModel(
   }
 
   // Warn if Codex node has allowed_tools or denied_tools (unsupported per-call)
+  // Note: pi-ai now supports tool filtering — only warn for Codex
   if (
     provider === 'codex' &&
     (node.allowed_tools !== undefined || node.denied_tools !== undefined)
@@ -441,6 +442,7 @@ async function resolveNodeProviderAndModel(
   }
 
   // Warn if Codex node has hooks (unsupported)
+  // Note: pi-ai now supports hooks via beforeToolCall/afterToolCall — only warn for Codex
   if (provider === 'codex' && node.hooks) {
     getLog().warn({ nodeId: node.id }, 'dag_node_hooks_ignored_codex');
     const delivered = await safeSendMessage(
@@ -454,13 +456,14 @@ async function resolveNodeProviderAndModel(
     }
   }
 
-  // Warn if Codex node has mcp (unsupported per-call)
-  if (provider === 'codex' && node.mcp) {
-    getLog().warn({ nodeId: node.id }, 'dag.mcp_ignored_codex');
+  // Warn if Codex/Pi-AI node has mcp (unsupported — pi-ai uses extensions instead)
+  if ((provider === 'codex' || provider === 'pi-ai') && node.mcp) {
+    const providerLabel = provider === 'pi-ai' ? 'Pi AI' : 'Codex';
+    getLog().warn({ nodeId: node.id, provider }, 'dag.mcp_ignored');
     const delivered = await safeSendMessage(
       platform,
       conversationId,
-      `Warning: Node '${node.id}' has mcp config but uses Codex — per-node MCP servers are not supported for Codex. Configure MCP servers globally in the Codex CLI config instead.`,
+      `Warning: Node '${node.id}' has mcp config but uses ${providerLabel} — per-node MCP servers are not supported for ${providerLabel}.`,
       { workflowId: workflowRunId, nodeName: node.id }
     );
     if (!delivered) {
@@ -468,7 +471,8 @@ async function resolveNodeProviderAndModel(
     }
   }
 
-  // Warn if Codex node has skills (unsupported)
+  // Warn if Codex node has skills (unsupported per-call for Codex)
+  // Note: pi-ai now supports skill discovery — only warn for Codex
   if (provider === 'codex' && node.skills) {
     getLog().warn({ nodeId: node.id }, 'dag.skills_ignored_codex');
     const delivered = await safeSendMessage(
@@ -482,18 +486,35 @@ async function resolveNodeProviderAndModel(
     }
   }
 
-  // Warn if Codex node has Claude-only SDK options (effort, thinking, maxBudgetUsd, systemPrompt, fallbackModel, betas, sandbox)
+  // Warn about Claude-only SDK options that are NOT supported by the non-Claude provider.
+  // Pi-ai now supports: systemPrompt (via piSystemPrompt), thinking (via piThinkingLevel),
+  // hooks (via beforeToolCall/afterToolCall), allowed_tools/denied_tools (via tool filtering),
+  // skills (via skill discovery). The remaining fields are truly Claude-only.
   if (provider === 'codex' || provider === 'pi-ai') {
-    const claudeOnlyFields = [
-      ['effort', node.effort ?? workflowLevelOptions.effort],
-      ['thinking', node.thinking ?? workflowLevelOptions.thinking],
+    // Fields that are Claude-only for BOTH Codex and Pi-AI
+    const sharedClaudeOnlyFields = [
       ['maxBudgetUsd', node.maxBudgetUsd],
-      ['systemPrompt', node.systemPrompt],
       ['fallbackModel', node.fallbackModel ?? workflowLevelOptions.fallbackModel],
       ['betas', node.betas ?? workflowLevelOptions.betas],
       ['sandbox', node.sandbox ?? workflowLevelOptions.sandbox],
     ] as const;
-    const present = claudeOnlyFields.filter(([, val]) => val !== undefined).map(([name]) => name);
+    // Fields that are Claude-only for Codex but supported by Pi-AI
+    const codexOnlyFields =
+      provider === 'codex'
+        ? ([
+            ['effort', node.effort ?? workflowLevelOptions.effort],
+            ['thinking', node.thinking ?? workflowLevelOptions.thinking],
+            ['systemPrompt', node.systemPrompt],
+          ] as const)
+        : ([] as const);
+    // For Pi-AI, effort is still Claude-only (different from thinkingLevel)
+    const piAiOnlyFields =
+      provider === 'pi-ai'
+        ? ([['effort', node.effort ?? workflowLevelOptions.effort]] as const)
+        : ([] as const);
+
+    const allFields = [...sharedClaudeOnlyFields, ...codexOnlyFields, ...piAiOnlyFields];
+    const present = allFields.filter(([, val]) => val !== undefined).map(([name]) => name);
     if (present.length > 0) {
       const providerLabel = provider === 'pi-ai' ? 'Pi AI' : 'Codex';
       getLog().warn(
@@ -519,12 +540,38 @@ async function resolveNodeProviderAndModel(
 
   let options: WorkflowAssistantOptions | undefined;
   if (provider === 'pi-ai') {
+    // Map Claude ThinkingConfig to pi-ai ThinkingLevel string
+    const nodeThinking = node.thinking ?? workflowLevelOptions.thinking;
+    let piThinkingLevel: string | undefined = config.assistants.pi?.thinkingLevel;
+    if (nodeThinking) {
+      // ThinkingConfig: { type: 'adaptive' | 'enabled' | 'disabled' }
+      const thinkingTypeMap: Record<string, string> = {
+        adaptive: 'medium',
+        enabled: 'high',
+        disabled: 'off',
+      };
+      piThinkingLevel = thinkingTypeMap[nodeThinking.type] ?? piThinkingLevel;
+    }
     options = {
       model,
       piAiProvider: config.assistants.pi?.provider,
+      piThinkingLevel,
+      piSystemPrompt: node.systemPrompt,
+      piSkillPaths: node.skills,
     };
     if (node.output_format) {
       options.outputFormat = { type: 'json_schema', schema: node.output_format };
+    }
+    // Tool filtering — pass through to client
+    if (node.allowed_tools !== undefined) {
+      options.tools = node.allowed_tools;
+    }
+    if (node.denied_tools !== undefined) {
+      options.disallowedTools = node.denied_tools;
+    }
+    // Hooks — pass YAML hooks config through to client (pi-ai maps them to beforeToolCall/afterToolCall)
+    if (node.hooks) {
+      options.hooks = buildSDKHooksFromYAML(node.hooks);
     }
   } else if (provider === 'codex') {
     options = {
@@ -1714,6 +1761,7 @@ function buildLoopNodeOptions(
     const piOptions: WorkflowAssistantOptions = {
       ...(model ? { model } : {}),
       piAiProvider: config.assistants.pi?.provider,
+      piThinkingLevel: config.assistants.pi?.thinkingLevel,
     };
     return Object.keys(piOptions).length > 0 ? piOptions : undefined;
   }

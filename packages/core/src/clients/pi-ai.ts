@@ -5,15 +5,28 @@
  * Unlike Claude and Codex which run as subprocesses, pi-ai runs in-process as a library.
  * Supports multiple LLM providers via @mariozechner/pi-ai (Anthropic, OpenAI, Google, Mistral,
  * Bedrock, Vertex, Groq, xAI, Ollama, vLLM, and others).
+ *
+ * Features:
+ * - System prompt injection (including discovered skills)
+ * - Thinking/reasoning level control (off → xhigh)
+ * - Tool filtering (allowed_tools / denied_tools)
+ * - Hook adapters (PreToolUse → beforeToolCall, PostToolUse → afterToolCall)
+ * - Skill discovery from .pi/skills/ and .agents/skills/
  */
 import {
   Agent,
   type AgentEvent,
   type AgentMessage,
   type AgentTool,
+  type BeforeToolCallContext,
+  type BeforeToolCallResult,
+  type AfterToolCallContext,
+  type AfterToolCallResult,
+  type ThinkingLevel,
 } from '@mariozechner/pi-agent-core';
 import { getModel, getEnvApiKey, streamSimple, Type } from '@mariozechner/pi-ai';
 import type { IAssistantClient, MessageChunk, AssistantRequestOptions } from '../types';
+import { discoverSkills, buildSkillSystemPrompt } from './pi-ai-skills';
 import { createLogger } from '@archon/paths';
 import { randomUUID } from 'crypto';
 import { readdir, readFile, writeFile } from 'fs/promises';
@@ -369,6 +382,102 @@ function createCodingTools(cwd: string): AgentTool<any>[] {
   return [readTool, editTool, writeTool, bashTool, grepTool, findTool, lsTool];
 }
 
+// ─── Hook Adapters ───────────────────────────────────────────────────────────
+// Map workflow YAML hooks (PreToolUse/PostToolUse with matcher + response)
+// to pi-agent-core's beforeToolCall/afterToolCall callbacks.
+
+/** Test if a tool name matches a pipe-separated regex pattern (e.g. "Write|Edit") */
+function matchesTool(matcher: string, toolName: string): boolean {
+  try {
+    return new RegExp(`^(?:${matcher})$`, 'i').test(toolName);
+  } catch {
+    // Invalid regex — fall back to exact match
+    return matcher.toLowerCase() === toolName.toLowerCase();
+  }
+}
+
+interface HookMatcherEntry {
+  matcher?: string;
+  hooks?: unknown[];
+  response?: {
+    systemMessage?: string;
+    hookSpecificOutput?: {
+      hookEventName?: string;
+      permissionDecision?: string;
+      permissionDecisionReason?: string;
+    };
+  };
+}
+
+type HooksConfig = Partial<Record<string, HookMatcherEntry[]>>;
+
+/**
+ * Build a `beforeToolCall` callback from workflow YAML PreToolUse hooks.
+ * Supports `permissionDecision: deny` to block tool execution.
+ */
+export function buildPiBeforeToolCall(
+  hooks: HooksConfig
+):
+  | ((
+      ctx: BeforeToolCallContext,
+      signal?: AbortSignal
+    ) => Promise<BeforeToolCallResult | undefined>)
+  | undefined {
+  const preToolUse = hooks.PreToolUse;
+  if (!preToolUse || preToolUse.length === 0) return undefined;
+
+  return async (ctx: BeforeToolCallContext): Promise<BeforeToolCallResult | undefined> => {
+    const toolName = ctx.toolCall.name;
+    for (const entry of preToolUse) {
+      if (entry.matcher && !matchesTool(entry.matcher, toolName)) continue;
+
+      const hookOutput = entry.response?.hookSpecificOutput;
+      if (hookOutput?.permissionDecision === 'deny') {
+        return {
+          block: true,
+          reason: hookOutput.permissionDecisionReason ?? `Tool '${toolName}' blocked by hook`,
+        };
+      }
+    }
+    return undefined;
+  };
+}
+
+/**
+ * Build an `afterToolCall` callback from workflow YAML PostToolUse hooks.
+ * Supports `systemMessage` to append steering text to tool output.
+ */
+export function buildPiAfterToolCall(
+  hooks: HooksConfig
+):
+  | ((ctx: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>)
+  | undefined {
+  const postToolUse = hooks.PostToolUse;
+  if (!postToolUse || postToolUse.length === 0) return undefined;
+
+  return async (ctx: AfterToolCallContext): Promise<AfterToolCallResult | undefined> => {
+    const toolName = ctx.toolCall.name;
+    for (const entry of postToolUse) {
+      if (entry.matcher && !matchesTool(entry.matcher, toolName)) continue;
+
+      const systemMessage = entry.response?.systemMessage;
+      if (systemMessage) {
+        // Append the system message to the tool result content
+        const existingText = ctx.result.content
+          .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+          .map(c => c.text)
+          .join('\n');
+        return {
+          content: [{ type: 'text', text: `${existingText}\n\n[System] ${systemMessage}` }],
+        };
+      }
+    }
+    return undefined;
+  };
+}
+
+// ─── Client ──────────────────────────────────────────────────────────────────
+
 export class PiAiClient implements IAssistantClient {
   getType(): string {
     return 'pi-ai';
@@ -384,7 +493,21 @@ export class PiAiClient implements IAssistantClient {
     const piProvider = requestOptions?.piAiProvider ?? 'anthropic';
     const modelId = requestOptions?.model ?? 'claude-sonnet-4-20250514';
 
-    log.info({ piProvider, modelId, cwd, hasResumeSession: !!resumeSessionId }, 'query_started');
+    log.info(
+      {
+        piProvider,
+        modelId,
+        cwd,
+        hasResumeSession: !!resumeSessionId,
+        hasSystemPrompt: !!requestOptions?.piSystemPrompt,
+        thinkingLevel: requestOptions?.piThinkingLevel ?? 'off',
+        hasTools: requestOptions?.tools !== undefined,
+        hasDeniedTools: !!requestOptions?.disallowedTools,
+        hasHooks: !!requestOptions?.hooks,
+        hasSkillPaths: !!requestOptions?.piSkillPaths,
+      },
+      'query_started'
+    );
 
     let model;
     try {
@@ -400,16 +523,56 @@ export class PiAiClient implements IAssistantClient {
     }
 
     const previousMessages = resumeSessionId ? (sessions.get(resumeSessionId) ?? []) : [];
-    const tools = createCodingTools(cwd);
+
+    // ── Tool filtering ──────────────────────────────────────────────────────
+    let tools = createCodingTools(cwd);
+    if (requestOptions?.tools !== undefined) {
+      const allowed = new Set(requestOptions.tools.map(t => t.toLowerCase()));
+      tools = tools.filter(t => allowed.has(t.name.toLowerCase()));
+    }
+    if (requestOptions?.disallowedTools) {
+      const denied = new Set(requestOptions.disallowedTools.map(t => t.toLowerCase()));
+      tools = tools.filter(t => !denied.has(t.name.toLowerCase()));
+    }
+
+    // ── Skill discovery ─────────────────────────────────────────────────────
+    const skills = await discoverSkills(cwd, requestOptions?.piSkillPaths);
+    const skillPrompt = buildSkillSystemPrompt(skills);
+
+    // ── System prompt assembly ──────────────────────────────────────────────
+    const systemPromptParts: string[] = [];
+    if (requestOptions?.piSystemPrompt) systemPromptParts.push(requestOptions.piSystemPrompt);
+    if (skillPrompt) systemPromptParts.push(skillPrompt);
+    // If outputFormat is specified, add JSON instructions to system prompt
+    // (pi-ai doesn't have native structured output — instruct via prompt)
+    if (requestOptions?.outputFormat?.schema) {
+      const schemaStr = JSON.stringify(requestOptions.outputFormat.schema, null, 2);
+      systemPromptParts.push(
+        `You MUST respond with valid JSON matching this schema:\n\`\`\`json\n${schemaStr}\n\`\`\`\nDo not include any text outside the JSON object.`
+      );
+    }
+    const systemPrompt = systemPromptParts.join('\n\n');
+
+    // ── Thinking level ──────────────────────────────────────────────────────
+    const thinkingLevel = (requestOptions?.piThinkingLevel ?? 'off') as ThinkingLevel;
+
+    // ── Hook adapters ───────────────────────────────────────────────────────
+    const hooksConfig = requestOptions?.hooks as HooksConfig | undefined;
+    const beforeToolCall = hooksConfig ? buildPiBeforeToolCall(hooksConfig) : undefined;
+    const afterToolCall = hooksConfig ? buildPiAfterToolCall(hooksConfig) : undefined;
 
     const agent = new Agent({
       initialState: {
         model,
         tools,
         messages: previousMessages,
+        systemPrompt,
+        thinkingLevel,
       },
       streamFn: streamSimple,
       getApiKey: (provider: string): string | undefined => getEnvApiKey(provider),
+      beforeToolCall,
+      afterToolCall,
     });
 
     const queue = createAsyncQueue<MessageChunk>();

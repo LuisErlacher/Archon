@@ -46,8 +46,16 @@ mock.module('@mariozechner/pi-ai', () => ({
   },
 }));
 
+// Mock pi-ai-skills
+const mockDiscoverSkills = mock(() => Promise.resolve([]));
+const mockBuildSkillSystemPrompt = mock(() => '');
+mock.module('./pi-ai-skills', () => ({
+  discoverSkills: mockDiscoverSkills,
+  buildSkillSystemPrompt: mockBuildSkillSystemPrompt,
+}));
+
 // Import after all mocks
-import { PiAiClient } from './pi-ai';
+import { PiAiClient, buildPiBeforeToolCall, buildPiAfterToolCall } from './pi-ai';
 
 describe('PiAiClient', () => {
   let client: PiAiClient;
@@ -61,10 +69,16 @@ describe('PiAiClient', () => {
     mockAbortFn.mockClear();
     mockUnsubscribe.mockClear();
     mockGetModel.mockClear();
+    mockDiscoverSkills.mockClear();
+    mockBuildSkillSystemPrompt.mockClear();
     mockLogger.info.mockClear();
     mockLogger.warn.mockClear();
     mockLogger.error.mockClear();
     mockLogger.debug.mockClear();
+
+    // Default skill mocks
+    mockDiscoverSkills.mockImplementation(() => Promise.resolve([]));
+    mockBuildSkillSystemPrompt.mockImplementation(() => '');
 
     // Default: restore mock implementations
     mockSubscribeFn.mockImplementation((listener: unknown) => {
@@ -378,6 +392,196 @@ describe('PiAiClient', () => {
       if (toolResult?.type === 'tool_result') {
         expect(typeof toolResult.toolOutput).toBe('string');
       }
+    });
+
+    test('passes systemPrompt to Agent initialState', async () => {
+      mockPromptFn.mockImplementation(async () => {
+        const signal = new AbortController().signal;
+        await capturedListener?.({ type: 'agent_end', messages: [] }, signal);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of client.sendQuery('test', '/tmp', undefined, {
+        piSystemPrompt: 'You are a helpful assistant',
+      })) {
+        // consume
+      }
+
+      const agentOptions = MockAgent.mock.calls[0]?.[0] as {
+        initialState?: { systemPrompt?: string };
+      };
+      expect(agentOptions?.initialState?.systemPrompt).toContain('You are a helpful assistant');
+    });
+
+    test('passes thinkingLevel to Agent initialState', async () => {
+      mockPromptFn.mockImplementation(async () => {
+        const signal = new AbortController().signal;
+        await capturedListener?.({ type: 'agent_end', messages: [] }, signal);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of client.sendQuery('test', '/tmp', undefined, {
+        piThinkingLevel: 'high',
+      })) {
+        // consume
+      }
+
+      const agentOptions = MockAgent.mock.calls[0]?.[0] as {
+        initialState?: { thinkingLevel?: string };
+      };
+      expect(agentOptions?.initialState?.thinkingLevel).toBe('high');
+    });
+
+    test('filters tools with allowed_tools', async () => {
+      mockPromptFn.mockImplementation(async () => {
+        const signal = new AbortController().signal;
+        await capturedListener?.({ type: 'agent_end', messages: [] }, signal);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of client.sendQuery('test', '/tmp', undefined, {
+        tools: ['read', 'bash'],
+      })) {
+        // consume
+      }
+
+      const agentOptions = MockAgent.mock.calls[0]?.[0] as {
+        initialState?: { tools?: { name: string }[] };
+      };
+      const toolNames = agentOptions?.initialState?.tools?.map(t => t.name) ?? [];
+      expect(toolNames).toContain('read');
+      expect(toolNames).toContain('bash');
+      expect(toolNames).not.toContain('write');
+      expect(toolNames).not.toContain('edit');
+    });
+
+    test('filters tools with denied_tools', async () => {
+      mockPromptFn.mockImplementation(async () => {
+        const signal = new AbortController().signal;
+        await capturedListener?.({ type: 'agent_end', messages: [] }, signal);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of client.sendQuery('test', '/tmp', undefined, {
+        disallowedTools: ['write', 'edit'],
+      })) {
+        // consume
+      }
+
+      const agentOptions = MockAgent.mock.calls[0]?.[0] as {
+        initialState?: { tools?: { name: string }[] };
+      };
+      const toolNames = agentOptions?.initialState?.tools?.map(t => t.name) ?? [];
+      expect(toolNames).not.toContain('write');
+      expect(toolNames).not.toContain('edit');
+      expect(toolNames).toContain('read');
+      expect(toolNames).toContain('bash');
+    });
+
+    test('discovers and injects skills into systemPrompt', async () => {
+      const mockSkills = [
+        { name: 'test-skill', description: 'A test skill', filePath: '/path/to/SKILL.md' },
+      ];
+      mockDiscoverSkills.mockImplementation(() => Promise.resolve(mockSkills));
+      mockBuildSkillSystemPrompt.mockImplementation(
+        () => '<available_skills>\n  <skill name="test-skill" />\n</available_skills>'
+      );
+
+      mockPromptFn.mockImplementation(async () => {
+        const signal = new AbortController().signal;
+        await capturedListener?.({ type: 'agent_end', messages: [] }, signal);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of client.sendQuery('test', '/tmp')) {
+        // consume
+      }
+
+      expect(mockDiscoverSkills).toHaveBeenCalledWith('/tmp', undefined);
+      const agentOptions = MockAgent.mock.calls[0]?.[0] as {
+        initialState?: { systemPrompt?: string };
+      };
+      expect(agentOptions?.initialState?.systemPrompt).toContain('available_skills');
+    });
+  });
+
+  describe('buildPiBeforeToolCall', () => {
+    test('returns undefined when no PreToolUse hooks', () => {
+      const result = buildPiBeforeToolCall({});
+      expect(result).toBeUndefined();
+    });
+
+    test('blocks tool matching deny pattern', async () => {
+      const fn = buildPiBeforeToolCall({
+        PreToolUse: [
+          {
+            matcher: 'Write|Edit',
+            response: {
+              hookSpecificOutput: {
+                permissionDecision: 'deny',
+                permissionDecisionReason: 'Read-only node',
+              },
+            },
+          },
+        ],
+      });
+      expect(fn).toBeDefined();
+
+      const result = await fn!({ toolCall: { name: 'Write' } } as never, undefined);
+      expect(result).toEqual({ block: true, reason: 'Read-only node' });
+    });
+
+    test('does not block tool not matching pattern', async () => {
+      const fn = buildPiBeforeToolCall({
+        PreToolUse: [
+          {
+            matcher: 'Write|Edit',
+            response: {
+              hookSpecificOutput: {
+                permissionDecision: 'deny',
+                permissionDecisionReason: 'Read-only node',
+              },
+            },
+          },
+        ],
+      });
+
+      const result = await fn!({ toolCall: { name: 'read' } } as never, undefined);
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('buildPiAfterToolCall', () => {
+    test('returns undefined when no PostToolUse hooks', () => {
+      const result = buildPiAfterToolCall({});
+      expect(result).toBeUndefined();
+    });
+
+    test('appends system message to matching tool result', async () => {
+      const fn = buildPiAfterToolCall({
+        PostToolUse: [
+          {
+            matcher: 'Write|Edit',
+            response: {
+              systemMessage: 'Run type-check now!',
+            },
+          },
+        ],
+      });
+      expect(fn).toBeDefined();
+
+      const result = await fn!(
+        {
+          toolCall: { name: 'Write' },
+          result: { content: [{ type: 'text', text: 'File written' }] },
+        } as never,
+        undefined
+      );
+      expect(result).toBeDefined();
+      expect(result!.content![0]).toEqual({
+        type: 'text',
+        text: expect.stringContaining('Run type-check now!'),
+      });
     });
   });
 });

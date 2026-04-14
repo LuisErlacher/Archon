@@ -34,6 +34,9 @@ export interface PiAiAssistantDefaults {
   /** LLM provider for pi-ai (e.g., 'anthropic', 'openai', 'google', 'mistral', 'groq', 'xai') */
   provider?: string;
   model?: string;
+  /** Default thinking/reasoning level for pi-ai Agent.
+   *  Maps to pi-agent-core ThinkingLevel. @default 'off' */
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 }
 
 export interface GlobalConfig {
@@ -292,7 +295,7 @@ export interface SafeConfig {
   assistants: {
     claude: Pick<ClaudeAssistantDefaults, 'model'>;
     codex: Pick<AssistantDefaults, 'model' | 'modelReasoningEffort' | 'webSearchMode'>;
-    pi: Pick<PiAiAssistantDefaults, 'model' | 'provider'>;
+    pi: Pick<PiAiAssistantDefaults, 'model' | 'provider' | 'thinkingLevel'>;
   };
   streaming: {
     telegram: 'stream' | 'batch';

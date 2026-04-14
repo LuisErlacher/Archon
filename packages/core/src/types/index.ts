@@ -312,6 +312,15 @@ export interface AssistantRequestOptions {
   agent?: string;
   /** Pi-ai LLM provider name (e.g. 'anthropic', 'openai', 'google'). Pi-ai only — ignored for Claude and Codex. */
   piAiProvider?: string;
+  /** System prompt for pi-ai Agent. Injected into Agent initialState.systemPrompt.
+   *  Pi-ai only — Claude uses systemPrompt field, Codex ignores it. */
+  piSystemPrompt?: string;
+  /** Thinking level for pi-ai Agent ('off'|'minimal'|'low'|'medium'|'high'|'xhigh').
+   *  Maps to pi-agent-core ThinkingLevel. Pi-ai only — Claude uses effort/thinking fields. */
+  piThinkingLevel?: string;
+  /** Paths to skill directories for pi-ai Agent. Skills are discovered and injected
+   *  into system prompt as XML. Pi-ai only — Claude uses skills/agents fields. */
+  piSkillPaths?: string[];
   /**
    * Abort signal for cancelling in-flight AI requests.
    * When aborted, the AI client should terminate the subprocess/query gracefully.
