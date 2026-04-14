@@ -569,9 +569,11 @@ async function resolveNodeProviderAndModel(
     if (node.denied_tools !== undefined) {
       options.disallowedTools = node.denied_tools;
     }
-    // Hooks — pass YAML hooks config through to client (pi-ai maps them to beforeToolCall/afterToolCall)
+    // Hooks — pi-ai reads the raw YAML structure (entry.response.systemMessage),
+    // NOT the Claude SDK format (entry.hooks[async () => response]).
+    // Passing raw hooks preserves the response field that buildPiBeforeToolCall/buildPiAfterToolCall expect.
     if (node.hooks) {
-      options.hooks = buildSDKHooksFromYAML(node.hooks);
+      options.hooks = node.hooks as unknown as SDKHooksMap;
     }
   } else if (provider === 'codex') {
     options = {
@@ -915,6 +917,11 @@ async function executeNodeInternal(
   let nodeTokens: WorkflowTokenUsage | undefined;
   let nodeCostUsd: number | undefined;
   let nodeStopReason: string | undefined;
+
+  // Token-level stream buffer: accumulates fast per-token chunks (Pi-AI/GLM)
+  // and flushes to the platform in 100ms batches to avoid word-per-line rendering.
+  let streamBuffer = '';
+  let streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let nodeNumTurns: number | undefined;
   let nodeModelUsage: Record<string, unknown> | undefined;
   const batchMessages: string[] = [];
@@ -985,12 +992,29 @@ async function executeNodeInternal(
       if (msg.type === 'assistant' && msg.content) {
         nodeOutputText += msg.content; // ALWAYS capture for $node_id.output
         if (streamingMode === 'stream') {
-          await safeSendMessage(platform, conversationId, msg.content, nodeContext);
+          // Buffer token-level streaming (Pi-AI emits per-token, Claude emits per-phrase).
+          // Accumulate tokens and flush after 100ms of inactivity or on non-text events,
+          // preventing word-per-line rendering in the frontend.
+          streamBuffer += msg.content;
+          if (streamFlushTimer) clearTimeout(streamFlushTimer);
+          streamFlushTimer = setTimeout(async () => {
+            if (streamBuffer) {
+              const chunk = streamBuffer;
+              streamBuffer = '';
+              await safeSendMessage(platform, conversationId, chunk, nodeContext);
+            }
+          }, 100);
         } else {
           batchMessages.push(msg.content);
         }
         await logAssistant(logDir, workflowRun.id, msg.content);
       } else if (msg.type === 'tool' && msg.toolName) {
+        // Flush any buffered text before tool events to maintain ordering
+        if (streamFlushTimer) clearTimeout(streamFlushTimer);
+        if (streamBuffer) {
+          await safeSendMessage(platform, conversationId, streamBuffer, nodeContext);
+          streamBuffer = '';
+        }
         const now = Date.now();
 
         // Emit tool_completed for the previous tool (fire-and-forget)
@@ -1065,6 +1089,12 @@ async function executeNodeInternal(
           await platform.sendStructuredEvent(conversationId, msg);
         }
       } else if (msg.type === 'result') {
+        // Flush any remaining buffered text before processing result
+        if (streamFlushTimer) clearTimeout(streamFlushTimer);
+        if (streamBuffer) {
+          await safeSendMessage(platform, conversationId, streamBuffer, nodeContext);
+          streamBuffer = '';
+        }
         // Emit tool_completed for the last tool in the node
         if (lastToolStartedAt) {
           const prevTool = lastToolStartedAt;

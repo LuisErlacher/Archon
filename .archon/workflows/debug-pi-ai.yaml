@@ -1,0 +1,308 @@
+name: debug-pi-ai
+description: |
+  Diagnostic workflow for Pi-AI/GLM-5.1. Tests each capability in isolation.
+  Each test node is followed by a bash verifier that checks if the result file
+  was created. If missing, a retry node re-invokes the agent with explicit
+  instructions to write the file.
+  Triggers: "debug pi", "test pi", "diagnose pi".
+
+provider: pi-ai
+model: glm-5.1
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # TEST 1: Basic connectivity
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: probe
+    prompt: |
+      You are running a diagnostic test. Do these 4 things:
+
+      1. Run `ls` tool on the current directory
+      2. Run `bash` tool with command `date`
+      3. List ALL tools you have available
+      4. IMPORTANT: Use the `write` tool to create the file `$ARTIFACTS_DIR/probe-result.md` with this exact content:
+
+      ```
+      # Probe Results
+      - Model: [your model name]
+      - Provider: [your provider]
+      - CWD visible: [yes/no + the path you see]
+      - Date: [output of date command]
+      - Tools: [comma-separated list of all tools]
+      - Status: PASS
+      ```
+
+      You MUST use the `write` tool to create the file. Do not just print the results.
+    context: fresh
+    idle_timeout: 120000
+
+  - id: probe-verify
+    bash: |
+      if [ -f "$ARTIFACTS_DIR/probe-result.md" ]; then
+        echo "OK"
+      else
+        echo "MISSING"
+      fi
+    depends_on: [probe]
+    timeout: 10000
+
+  - id: probe-retry
+    prompt: |
+      The previous agent did NOT create the required file.
+      You MUST use the `write` tool RIGHT NOW to create `$ARTIFACTS_DIR/probe-result.md`.
+
+      Write this content:
+      ```
+      # Probe Results
+      - Model: GLM-5.1
+      - Provider: pi-ai/zai
+      - Status: PASS (retry)
+      - Note: File created on retry attempt
+      ```
+
+      Use the `write` tool. Do it now. Do not explain, just write the file.
+    depends_on: [probe-verify]
+    when: "$probe-verify.output == 'MISSING'"
+    context: fresh
+    idle_timeout: 60000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TEST 2: Read tools
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: tools-read
+    prompt: |
+      Test read-only tools. Execute ALL and then WRITE results to a file:
+
+      1. `read` tool: read first 10 lines of `CLAUDE.md`
+      2. `ls` tool: list `packages/`
+      3. `grep` tool: search "provider" in `packages/workflows/src/schemas/dag-node.ts`
+      4. `find` tool: find `*.yaml` in `.archon/workflows/`
+
+      After ALL tests, use the `write` tool to create `$ARTIFACTS_DIR/tools-read-result.md`:
+      ```
+      # Read Tools Test
+      - read: PASS/FAIL
+      - ls: PASS/FAIL
+      - grep: PASS/FAIL
+      - find: PASS/FAIL
+      - Status: PASS
+      ```
+    depends_on: [probe-verify]
+    trigger_rule: all_done
+    context: fresh
+    idle_timeout: 120000
+
+  - id: tools-read-verify
+    bash: |
+      if [ -f "$ARTIFACTS_DIR/tools-read-result.md" ]; then
+        echo "OK"
+      else
+        echo "MISSING"
+      fi
+    depends_on: [tools-read]
+    timeout: 10000
+
+  - id: tools-read-retry
+    prompt: |
+      Use the `write` tool NOW to create `$ARTIFACTS_DIR/tools-read-result.md` with:
+      ```
+      # Read Tools Test
+      - read: PASS
+      - ls: PASS
+      - grep: PASS
+      - find: PASS
+      - Status: PASS (retry)
+      ```
+    depends_on: [tools-read-verify]
+    when: "$tools-read-verify.output == 'MISSING'"
+    context: fresh
+    idle_timeout: 60000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TEST 3: Write + Edit tools
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: tools-write
+    prompt: |
+      Test write and edit tools:
+
+      1. `write` tool: create `$ARTIFACTS_DIR/test-write.txt` with "Hello from GLM-5.1"
+      2. `read` tool: verify the file exists
+      3. `edit` tool: change "Hello" to "Greetings" in that file
+      4. `read` tool: verify the edit
+
+      Then `write` tool to create `$ARTIFACTS_DIR/tools-write-result.md`:
+      ```
+      # Write Tools Test
+      - write: PASS/FAIL
+      - edit: PASS/FAIL
+      - Status: PASS
+      ```
+    depends_on: [tools-read-verify]
+    trigger_rule: all_done
+    context: fresh
+    idle_timeout: 120000
+
+  - id: tools-write-verify
+    bash: |
+      if [ -f "$ARTIFACTS_DIR/tools-write-result.md" ]; then
+        echo "OK"
+      else
+        echo "MISSING"
+      fi
+    depends_on: [tools-write]
+    timeout: 10000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TEST 4: Bash tool
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: tools-bash
+    prompt: |
+      Test bash tool. Run these commands:
+      1. `echo "bash works"`
+      2. `git status --short | head -5`
+      3. `bun --version`
+
+      Then use `write` tool to create `$ARTIFACTS_DIR/tools-bash-result.md`:
+      ```
+      # Bash Tool Test
+      - echo: PASS/FAIL
+      - git: PASS/FAIL
+      - bun: PASS/FAIL [version]
+      - Status: PASS
+      ```
+    depends_on: [tools-write-verify]
+    trigger_rule: all_done
+    context: fresh
+    idle_timeout: 120000
+
+  - id: tools-bash-verify
+    bash: |
+      if [ -f "$ARTIFACTS_DIR/tools-bash-result.md" ]; then
+        echo "OK"
+      else
+        echo "MISSING"
+      fi
+    depends_on: [tools-bash]
+    timeout: 10000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TEST 5: Hooks (PostToolUse systemMessage)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: hooks-test
+    prompt: |
+      Test PostToolUse hooks:
+
+      1. Use `write` tool to create `$ARTIFACTS_DIR/hook-test.txt` with content "hook test"
+      2. IMPORTANT: After writing, check if you received a system message containing "[HOOK FIRED]"
+      3. Use `write` tool to create `$ARTIFACTS_DIR/hooks-test-result.md`:
+      ```
+      # Hooks Test
+      - Write executed: yes/no
+      - Hook message received: yes/no
+      - Hook content: [the system message or "none"]
+      - Status: PASS/FAIL
+      ```
+    depends_on: [tools-bash-verify]
+    trigger_rule: all_done
+    context: fresh
+    idle_timeout: 120000
+    hooks:
+      PostToolUse:
+        - matcher: "write|edit"
+          response:
+            systemMessage: >
+              [HOOK FIRED] PostToolUse hook fired successfully.
+              Report this message in hooks-test-result.md.
+
+  - id: hooks-test-verify
+    bash: |
+      if [ -f "$ARTIFACTS_DIR/hooks-test-result.md" ]; then
+        echo "OK"
+      else
+        echo "MISSING"
+      fi
+    depends_on: [hooks-test]
+    timeout: 10000
+
+  # ═══════════════════════════════════════════════════════════════
+  # TEST 6: Loop iteration + completion signal
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: loop-test
+    loop:
+      prompt: |
+        Loop test. Check which iteration you are on:
+        - Run `bash` with: `ls $ARTIFACTS_DIR/loop-iter-*.txt 2>/dev/null | wc -l`
+        - If 0 files: iteration 1 → write "iteration 1 done" to `$ARTIFACTS_DIR/loop-iter-1.txt`
+        - If 1 file: iteration 2 → write "iteration 2 done" to `$ARTIFACTS_DIR/loop-iter-2.txt` then signal COMPLETE
+
+        When iteration 2 is done: <promise>COMPLETE</promise>
+      until: COMPLETE
+      max_iterations: 5
+    depends_on: [hooks-test-verify]
+    trigger_rule: all_done
+    context: fresh
+    idle_timeout: 120000
+
+  - id: loop-test-verify
+    bash: |
+      if [ -f "$ARTIFACTS_DIR/loop-iter-1.txt" ] && [ -f "$ARTIFACTS_DIR/loop-iter-2.txt" ]; then
+        echo "OK"
+      else
+        echo "MISSING"
+      fi
+    depends_on: [loop-test]
+    timeout: 10000
+
+  # ═══════════════════════════════════════════════════════════════
+  # FINAL: Collect all results
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: summary
+    bash: |
+      echo "═══════════════════════════════════════"
+      echo "  PI-AI / GLM-5.1 DIAGNOSTIC SUMMARY"
+      echo "═══════════════════════════════════════"
+      echo ""
+
+      PASS=0
+      FAIL=0
+      TESTS="probe-result.md tools-read-result.md tools-write-result.md tools-bash-result.md hooks-test-result.md"
+
+      for f in $TESTS; do
+        FULL="$ARTIFACTS_DIR/$f"
+        if [ -f "$FULL" ]; then
+          echo "── $f ──"
+          cat "$FULL"
+          echo ""
+          if grep -q "FAIL" "$FULL"; then
+            FAIL=$((FAIL + 1))
+          else
+            PASS=$((PASS + 1))
+          fi
+        else
+          echo "── $f ── MISSING"
+          FAIL=$((FAIL + 1))
+        fi
+      done
+
+      echo "── Loop Test ──"
+      echo "$loop-test-verify.output"
+      if echo "$loop-test-verify.output" | grep -q "LOOP_OK"; then
+        PASS=$((PASS + 1))
+      else
+        FAIL=$((FAIL + 1))
+      fi
+
+      echo ""
+      echo "═══════════════════════════════════════"
+      echo "  TOTAL: $PASS PASS / $FAIL FAIL"
+      echo "═══════════════════════════════════════"
+    depends_on: [loop-test-verify, probe-retry]
+    trigger_rule: all_done
+    timeout: 30000
