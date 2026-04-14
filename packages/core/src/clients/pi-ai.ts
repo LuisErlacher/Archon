@@ -24,7 +24,14 @@ import {
   type AfterToolCallResult,
   type ThinkingLevel,
 } from '@mariozechner/pi-agent-core';
-import { getModel, getEnvApiKey, streamSimple, Type } from '@mariozechner/pi-ai';
+import {
+  getModel,
+  getEnvApiKey,
+  streamSimple,
+  Type,
+  type Model,
+  type Api,
+} from '@mariozechner/pi-ai';
 import type { IAssistantClient, MessageChunk, AssistantRequestOptions } from '../types';
 import { discoverSkills, buildSkillSystemPrompt } from './pi-ai-skills';
 import { createLogger } from '@archon/paths';
@@ -476,9 +483,25 @@ export function buildPiAfterToolCall(
   };
 }
 
+// ─── Retry Constants ─────────────────────────────────────────────────────────
+
+/** Max retries for transient failures (3 = 4 total attempts).
+ *  Rate limits, timeouts, and network errors are often transient — pi-ai providers
+ *  like ZAI have flat-rate pricing so "credit exhaustion" errors are also transient. */
+const MAX_RETRIES = 3;
+
+/** Base delay between retries in milliseconds (exponential backoff: 2s, 4s, 8s) */
+const RETRY_BASE_DELAY_MS = 2000;
+
 // ─── Client ──────────────────────────────────────────────────────────────────
 
 export class PiAiClient implements IAssistantClient {
+  private readonly retryBaseDelayMs: number;
+
+  constructor(options?: { retryBaseDelayMs?: number }) {
+    this.retryBaseDelayMs = options?.retryBaseDelayMs ?? RETRY_BASE_DELAY_MS;
+  }
+
   getType(): string {
     return 'pi-ai';
   }
@@ -561,6 +584,102 @@ export class PiAiClient implements IAssistantClient {
     const beforeToolCall = hooksConfig ? buildPiBeforeToolCall(hooksConfig) : undefined;
     const afterToolCall = hooksConfig ? buildPiAfterToolCall(hooksConfig) : undefined;
 
+    // ── Retry loop ──────────────────────────────────────────────────────────
+    // Note: If a previous attempt yielded partial chunks, those are already consumed
+    // by the caller. Retry starts a fresh Agent, so the caller may receive partial
+    // output from the failed attempt followed by full output from the retry.
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (requestOptions?.abortSignal?.aborted) {
+        throw new Error('Query aborted');
+      }
+
+      if (attempt > 0) {
+        const delayMs = this.retryBaseDelayMs * Math.pow(2, attempt - 1);
+        log.info(
+          { attempt, delayMs, piProvider, modelId, previousError: lastError?.message },
+          'pi_ai.retry_started'
+        );
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      try {
+        yield* this.executeAttempt(
+          prompt,
+          model,
+          tools,
+          previousMessages,
+          systemPrompt,
+          thinkingLevel,
+          beforeToolCall,
+          afterToolCall,
+          requestOptions
+        );
+        return; // Success — exit retry loop
+      } catch (error) {
+        const err = error as Error;
+
+        // Don't retry aborted queries
+        if (requestOptions?.abortSignal?.aborted) {
+          throw new Error('Query aborted');
+        }
+
+        const errorType = classifyError(err.message);
+
+        log.error(
+          { error: err.message, errorType, piProvider, modelId, attempt, maxRetries: MAX_RETRIES },
+          'pi_ai.attempt_failed'
+        );
+
+        // Don't retry auth errors — they won't resolve
+        if (errorType === 'auth') {
+          const enriched = new Error(`Pi-AI auth error (provider=${piProvider}): ${err.message}`);
+          enriched.cause = error;
+          throw enriched;
+        }
+
+        // Retry transient failures (rate limit, unknown/network errors)
+        if (attempt < MAX_RETRIES) {
+          lastError = err;
+          continue;
+        }
+
+        // Final failure — enrich and throw
+        const enriched = new Error(
+          `Pi-AI query failed after ${MAX_RETRIES + 1} attempts (provider=${piProvider}, model=${modelId}): ${err.message}`
+        );
+        enriched.cause = error;
+        throw enriched;
+      }
+    }
+
+    throw lastError ?? new Error('Pi-AI query failed after retries');
+  }
+
+  /** Execute a single Agent prompt attempt. Yields chunks or throws on error. */
+  private async *executeAttempt(
+    prompt: string,
+    model: Model<Api>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools: AgentTool<any>[],
+    previousMessages: AgentMessage[],
+    systemPrompt: string,
+    thinkingLevel: ThinkingLevel,
+    beforeToolCall:
+      | ((
+          ctx: BeforeToolCallContext,
+          signal?: AbortSignal
+        ) => Promise<BeforeToolCallResult | undefined>)
+      | undefined,
+    afterToolCall:
+      | ((
+          ctx: AfterToolCallContext,
+          signal?: AbortSignal
+        ) => Promise<AfterToolCallResult | undefined>)
+      | undefined,
+    requestOptions?: AssistantRequestOptions
+  ): AsyncGenerator<MessageChunk> {
     const agent = new Agent({
       initialState: {
         model,
@@ -618,7 +737,7 @@ export class PiAiClient implements IAssistantClient {
     // Start the prompt (non-blocking)
     agent.prompt(prompt).catch((err: Error) => {
       const errorType = classifyError(err.message);
-      log.error({ error: err.message, errorType, piProvider, modelId }, 'query_failed');
+      getLog().error({ error: err.message, errorType }, 'pi_ai.prompt_failed');
       if (errorType === 'rate_limit') {
         queue.push({ type: 'rate_limit', rateLimitInfo: { message: err.message } });
       }
@@ -626,8 +745,7 @@ export class PiAiClient implements IAssistantClient {
       queue.fail(err);
     });
 
-    // Proactively fail the queue when the abort signal fires, so the for-await loop
-    // terminates immediately rather than waiting for the agent to complete naturally.
+    // Proactively fail the queue when the abort signal fires
     const abortHandler = (): void => {
       unsubscribe();
       agent.abort();

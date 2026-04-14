@@ -61,7 +61,7 @@ describe('PiAiClient', () => {
   let client: PiAiClient;
 
   beforeEach(() => {
-    client = new PiAiClient();
+    client = new PiAiClient({ retryBaseDelayMs: 1 });
     capturedListener = null;
     MockAgent.mockClear();
     mockSubscribeFn.mockClear();
@@ -328,7 +328,8 @@ describe('PiAiClient', () => {
       }
 
       expect(caughtError).not.toBeNull();
-      expect(caughtError?.message).toBe('API connection failed');
+      // After retries, error message is enriched with attempt count
+      expect(caughtError?.message).toContain('API connection failed');
     });
 
     test('emits rate_limit chunk before propagating rate limit errors', async () => {

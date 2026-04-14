@@ -1249,9 +1249,117 @@ async function executeNodeInternal(
     }
 
     // Detect credit exhaustion: SDK returns it as assistant text, not a thrown error.
+    // For pi-ai providers with flat-rate pricing (e.g. ZAI/GLM), credit exhaustion
+    // messages are transient — retry instead of failing the node.
     const creditError = detectCreditExhaustion(nodeOutputText);
 
     if (creditError) {
+      if (provider === 'pi-ai') {
+        // Pi-ai providers often have flat-rate plans where "credit exhaustion" is
+        // a transient API error, not a real billing limit. Retry with backoff.
+        const maxCreditRetries = 3;
+        const creditRetryBaseMs = 5000;
+        let creditRetrySuccess = false;
+
+        for (let creditAttempt = 1; creditAttempt <= maxCreditRetries; creditAttempt++) {
+          const delayMs = creditRetryBaseMs * Math.pow(2, creditAttempt - 1);
+          getLog().warn(
+            { nodeId: node.id, attempt: creditAttempt, maxRetries: maxCreditRetries, delayMs },
+            'dag.pi_ai_credit_error_retrying'
+          );
+          await safeSendMessage(
+            platform,
+            conversationId,
+            `⚠️ Node '${node.id}': API returned credit/quota error (attempt ${creditAttempt}/${maxCreditRetries}). Retrying in ${Math.round(delayMs / 1000)}s...`,
+            { workflowId: workflowRun.id, nodeName: node.id }
+          );
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+
+          // Re-run the node with a fresh session (don't resume — the previous output was a credit error)
+          const retryClient = deps.getAssistantClient(provider);
+          let retryOutput = '';
+          let retryHadCreditError = false;
+          try {
+            for await (const chunk of retryClient.sendQuery(
+              finalPrompt,
+              cwd,
+              undefined, // Fresh session
+              nodeOptions
+            )) {
+              if (chunk.type === 'assistant') retryOutput += chunk.content;
+              if (chunk.type === 'result') {
+                nodeOutputText = retryOutput;
+                resumeSessionId = chunk.sessionId;
+              }
+            }
+            retryHadCreditError = detectCreditExhaustion(retryOutput) !== null;
+          } catch {
+            retryHadCreditError = true;
+          }
+
+          if (!retryHadCreditError && retryOutput.length > 0) {
+            getLog().info(
+              { nodeId: node.id, attempt: creditAttempt },
+              'dag.pi_ai_credit_retry_succeeded'
+            );
+            creditRetrySuccess = true;
+            break;
+          }
+        }
+
+        if (!creditRetrySuccess) {
+          getLog().error(
+            { nodeId: node.id, maxRetries: maxCreditRetries },
+            'dag.pi_ai_credit_retries_exhausted'
+          );
+          // Fall through to the standard credit exhaustion failure below
+        } else {
+          // Retry succeeded — skip the failure path, continue to normal completion
+          const duration = Date.now() - nodeStartTime;
+          getLog().info({ nodeId: node.id, durationMs: duration }, 'dag_node_completed');
+          await logNodeComplete(logDir, workflowRun.id, node.id, node.command ?? '<inline>', {
+            durationMs: duration,
+            tokens: nodeTokens,
+          });
+
+          deps.store
+            .createWorkflowEvent({
+              workflow_run_id: workflowRun.id,
+              event_type: 'node_completed',
+              step_name: node.id,
+              data: {
+                command: node.command ?? '<inline>',
+                durationMs: duration,
+                outputLength: nodeOutputText.length,
+              },
+            })
+            .catch((dbErr: Error) => {
+              getLog().error(
+                { err: dbErr, workflowRunId: workflowRun.id, eventType: 'node_completed' },
+                'workflow_event_persist_failed'
+              );
+            });
+
+          emitter.emit({
+            type: 'node_completed',
+            runId: workflowRun.id,
+            nodeId: node.id,
+            nodeName: node.command ?? node.id,
+            duration,
+          });
+
+          lastNodeCancelCheck.delete(`${workflowRun.id}:${node.id}`);
+          lastNodeActivityUpdate.delete(`${workflowRun.id}:${node.id}`);
+
+          return {
+            state: 'completed',
+            output: nodeOutputText,
+            sessionId: resumeSessionId,
+          };
+        }
+      }
+
+      // Claude/Codex: credit exhaustion is always fatal (pay-per-use billing)
       const duration = Date.now() - nodeStartTime;
       getLog().warn({ nodeId: node.id, durationMs: duration }, 'dag.node_credit_exhausted');
       await logNodeError(logDir, workflowRun.id, node.id, creditError);
