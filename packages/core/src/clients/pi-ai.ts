@@ -764,6 +764,7 @@ export class PiAiClient implements IAssistantClient {
           break;
         case 'agent_end': {
           streamEnded = true;
+          clearTimeout(globalTimeout);
           if (idleTimer) clearTimeout(idleTimer);
           const newSessionId = randomUUID();
           sessions.set(newSessionId, event.messages);
@@ -774,9 +775,31 @@ export class PiAiClient implements IAssistantClient {
       }
     });
 
-    // Start the prompt (non-blocking)
+    // Start the prompt with a global timeout fallback.
+    // The idle timer (resetIdleTimer) handles stalls *after* events start flowing.
+    // This global timeout handles the case where streamSimple() hangs internally
+    // and NEVER emits events (observed with ZAI provider).
+    const GLOBAL_PROMPT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max per prompt
+    const globalTimeout = setTimeout(() => {
+      if (streamEnded) return;
+      streamEnded = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      getLog().warn(
+        { timeoutMs: GLOBAL_PROMPT_TIMEOUT_MS, hasReceivedContent },
+        'pi_ai.global_prompt_timeout'
+      );
+      const messages = agent.state?.messages ?? [];
+      const newSessionId = randomUUID();
+      sessions.set(newSessionId, messages);
+      queue.push({ type: 'result', sessionId: newSessionId });
+      queue.end();
+      unsubscribe();
+      agent.abort();
+    }, GLOBAL_PROMPT_TIMEOUT_MS);
+
     agent.prompt(prompt).catch((err: Error) => {
       streamEnded = true;
+      clearTimeout(globalTimeout);
       if (idleTimer) clearTimeout(idleTimer);
       const errorType = classifyError(err.message);
       getLog().error({ error: err.message, errorType }, 'pi_ai.prompt_failed');
@@ -790,6 +813,7 @@ export class PiAiClient implements IAssistantClient {
     // Proactively fail the queue when the abort signal fires
     const abortHandler = (): void => {
       streamEnded = true;
+      clearTimeout(globalTimeout);
       if (idleTimer) clearTimeout(idleTimer);
       unsubscribe();
       agent.abort();
@@ -805,6 +829,7 @@ export class PiAiClient implements IAssistantClient {
       }
     } finally {
       streamEnded = true;
+      clearTimeout(globalTimeout);
       if (idleTimer) clearTimeout(idleTimer);
       requestOptions?.abortSignal?.removeEventListener('abort', abortHandler);
       unsubscribe();
