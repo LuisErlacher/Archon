@@ -493,6 +493,11 @@ const MAX_RETRIES = 3;
 /** Base delay between retries in milliseconds (exponential backoff: 2s, 4s, 8s) */
 const RETRY_BASE_DELAY_MS = 2000;
 
+/** Idle timeout for agent streaming (ms). If no events arrive for this long after
+ *  receiving at least one text token, assume the stream stalled and force completion.
+ *  Workaround: some pi-ai providers (e.g. ZAI/GLM) don't emit the stop event. */
+const STREAM_IDLE_TIMEOUT_MS = 30_000;
+
 // ─── Client ──────────────────────────────────────────────────────────────────
 
 export class PiAiClient implements IAssistantClient {
@@ -696,18 +701,51 @@ export class PiAiClient implements IAssistantClient {
 
     const queue = createAsyncQueue<MessageChunk>();
 
+    // ── Stream idle watchdog ───────────────────────────��────────────────────
+    // Some pi-ai providers (e.g. ZAI/GLM) don't emit the stop/done event,
+    // leaving the Agent hanging forever. This watchdog detects the stall and
+    // forces completion by aborting the agent and ending the queue.
+    let hasReceivedContent = false;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let streamEnded = false;
+
+    const resetIdleTimer = (): void => {
+      if (streamEnded) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      if (!hasReceivedContent) return; // Don't start timer until first content arrives
+      idleTimer = setTimeout(() => {
+        if (streamEnded) return;
+        streamEnded = true;
+        getLog().warn({ timeoutMs: STREAM_IDLE_TIMEOUT_MS }, 'pi_ai.stream_idle_timeout');
+        // Force-end: create a session from whatever messages the agent has
+        const messages = agent.state?.messages ?? [];
+        const newSessionId = randomUUID();
+        sessions.set(newSessionId, messages);
+        queue.push({ type: 'result', sessionId: newSessionId });
+        queue.end();
+        unsubscribe();
+        agent.abort();
+      }, STREAM_IDLE_TIMEOUT_MS);
+    };
+
     const unsubscribe = agent.subscribe(async (event: AgentEvent) => {
+      if (streamEnded) return;
+      resetIdleTimer();
+
       switch (event.type) {
         case 'message_update': {
           const ame = event.assistantMessageEvent;
           if (ame.type === 'text_delta') {
+            hasReceivedContent = true;
             queue.push({ type: 'assistant', content: ame.delta });
           } else if (ame.type === 'thinking_delta') {
+            hasReceivedContent = true;
             queue.push({ type: 'thinking', content: ame.delta });
           }
           break;
         }
         case 'tool_execution_start':
+          hasReceivedContent = true;
           queue.push({
             type: 'tool',
             toolName: event.toolName,
@@ -725,6 +763,8 @@ export class PiAiClient implements IAssistantClient {
           });
           break;
         case 'agent_end': {
+          streamEnded = true;
+          if (idleTimer) clearTimeout(idleTimer);
           const newSessionId = randomUUID();
           sessions.set(newSessionId, event.messages);
           queue.push({ type: 'result', sessionId: newSessionId });
@@ -736,6 +776,8 @@ export class PiAiClient implements IAssistantClient {
 
     // Start the prompt (non-blocking)
     agent.prompt(prompt).catch((err: Error) => {
+      streamEnded = true;
+      if (idleTimer) clearTimeout(idleTimer);
       const errorType = classifyError(err.message);
       getLog().error({ error: err.message, errorType }, 'pi_ai.prompt_failed');
       if (errorType === 'rate_limit') {
@@ -747,6 +789,8 @@ export class PiAiClient implements IAssistantClient {
 
     // Proactively fail the queue when the abort signal fires
     const abortHandler = (): void => {
+      streamEnded = true;
+      if (idleTimer) clearTimeout(idleTimer);
       unsubscribe();
       agent.abort();
       queue.fail(new Error('Query aborted'));
@@ -760,6 +804,8 @@ export class PiAiClient implements IAssistantClient {
         yield chunk;
       }
     } finally {
+      streamEnded = true;
+      if (idleTimer) clearTimeout(idleTimer);
       requestOptions?.abortSignal?.removeEventListener('abort', abortHandler);
       unsubscribe();
     }
