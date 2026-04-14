@@ -1,0 +1,709 @@
+name: archon-idea-to-pr-pi
+description: |
+  Pi-AI (GLM-5.1) variant of the full idea-to-pr pipeline.
+  Same 8-phase, 16-node pipeline as archon-idea-to-pr but runs on pi-ai with GLM-5.1.
+  Uses inline prompts instead of command files for provider independence.
+  Triggers: "pi idea to pr", "glm idea", "glm feature full", "pi full pipeline".
+  Input: Feature description, spec path, or GitHub issue number.
+  Output: PR ready for merge with comprehensive 5-agent review completed.
+
+provider: pi-ai
+model: glm-5.1
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 0: CREATE PLAN — Research codebase + generate plan
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: create-plan
+    prompt: |
+      You are a senior engineer creating a detailed implementation plan.
+
+      ## Feature Request
+      $ARGUMENTS
+
+      ## Instructions
+
+      1. Read `CLAUDE.md` to understand the codebase architecture, conventions, and import patterns
+      2. Read `docs/PRD.md` if it exists to understand the feature in context of the full product vision
+      3. Read `docs/ROADMAP.md` if it exists to see where this feature fits
+      4. Explore the codebase:
+         - Find files related to the feature
+         - Understand existing patterns and conventions
+         - Identify what already exists that can be reused
+      5. If the feature references an SDK (Claude Agent SDK, Codex SDK, pi-ai):
+         - Read relevant docs in `docs/claude-code/agent-sdk/` or `docs/codex-sdk/`
+         - Verify SDK capabilities match what the feature assumes
+      6. Identify risks and unknowns
+
+      ## Planning Rules
+
+      - Each task must be independently verifiable (has a verify command)
+      - Order tasks so each builds on the previous
+      - Max 10 tasks per plan — if more needed, split the feature
+      - Include the exact files to create/modify
+      - Include acceptance criteria per task
+      - Follow CLAUDE.md conventions (import patterns, type safety, etc.)
+      - Add a final task: "Run full validation suite" (`bun run validate`)
+
+      ## Output
+
+      Write research findings AND plan to `$ARTIFACTS_DIR/plan.md`:
+      ```
+      # Implementation Plan: [Feature Name]
+
+      ## Research Summary
+      - What exists (files, APIs, patterns to reuse)
+      - What needs to be created
+      - SDK constraints or limitations discovered
+      - Risks and mitigation strategies
+
+      ## Task 1: [Title]
+      **Files:** path/to/file.ts
+      **Action:** [What to do]
+      **Verify:** `bun run type-check`
+      **AC:** [Acceptance criteria]
+
+      ## Task 2: ...
+      ```
+    context: fresh
+    denied_tools: [Write, Edit]
+    # Note: denied_tools will be ignored by pi-ai provider (Claude-only feature).
+    # The prompt instructions serve as behavioral guardrails instead.
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 1: SETUP — Branch setup + scope extraction
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: plan-setup
+    prompt: |
+      You are setting up the development environment for implementing a plan.
+
+      ## Instructions
+
+      1. Read the plan at `$ARTIFACTS_DIR/plan.md`
+      2. Extract the list of files that will be modified or created
+      3. Verify the branch is clean: `git status`
+      4. Read each file that the plan references as "to modify" — confirm it exists
+      5. For new files, verify the parent directory exists or create it
+      6. Write scope limits to `$ARTIFACTS_DIR/.scope`:
+         - `ALLOWED_PATTERNS:` — file patterns the plan is allowed to touch
+         - `FORBIDDEN_PATTERNS:` — sensitive files that should NOT be modified
+         - `MAX_FILES_CHANGED:` 20 (safety limit)
+      7. Report any issues with the plan setup (missing dirs, file not found, etc.)
+
+      ## Output
+
+      Write setup report to `$ARTIFACTS_DIR/setup-report.md`:
+      - Branch status
+      - Files verified
+      - Scope limits defined
+      - Any issues found
+    depends_on: [create-plan]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 2: CONFIRM PLAN — Verify plan is still valid
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: confirm-plan
+    prompt: |
+      You are reviewing an implementation plan before execution.
+
+      ## Plan
+      Read `$ARTIFACTS_DIR/plan.md`
+
+      ## Setup Report
+      Read `$ARTIFACTS_DIR/setup-report.md`
+
+      ## Verification Checklist
+
+      1. **Completeness:** Does the plan cover ALL aspects of the feature request?
+      2. **Verify commands:** Does every task have a concrete verify command?
+      3. **File accuracy:** Do the referenced files exist (or are clearly new)?
+      4. **Dependency order:** Are tasks ordered correctly (no forward references)?
+      5. **Scope creep:** Does the plan add things NOT in the feature request?
+      6. **Convention compliance:** Does the plan follow CLAUDE.md patterns?
+      7. **Missing tests:** Are there tasks for writing tests?
+      8. **Setup issues:** Are there any issues from the setup report?
+
+      ## Rules
+
+      - If ALL checks pass: confirm the plan is ready
+      - If issues found: fix the plan file directly, then re-check
+      - Track your issue count — if it doesn't decrease between iterations, confirm anyway (stall detection)
+
+      ## Output
+
+      Write confirmation to `$ARTIFACTS_DIR/plan-confirmation.md`:
+      - Status: CONFIRMED or REVISED
+      - Issues found and fixed (if any)
+      - Final task count
+    depends_on: [plan-setup]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 3: IMPLEMENT — Execute the plan task by task
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: implement-tasks
+    loop:
+      prompt: |
+        You are implementing a feature following a detailed plan.
+
+        ## Plan
+        Read `$ARTIFACTS_DIR/plan.md`
+
+        ## Confirmation
+        Read `$ARTIFACTS_DIR/plan-confirmation.md`
+
+        ## Rules
+
+        - Follow the plan EXACTLY — do not add extra improvements
+        - After each file edit, run the task's verify command
+        - If verify fails, fix before moving to next task
+        - Commit each completed task with a descriptive message
+        - If a task is harder than expected, note it but continue
+        - When ALL tasks are done, signal COMPLETE
+
+        ## Progress Tracking
+
+        After completing each task, update `$ARTIFACTS_DIR/progress.md`:
+        ```
+        - [x] Task 1: [title] — commit: [hash]
+        - [x] Task 2: [title] — commit: [hash]
+        - [ ] Task 3: [title] — IN PROGRESS
+        ```
+
+        When all tasks complete: <promise>COMPLETE</promise>
+      until: COMPLETE
+      max_iterations: 20
+      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+    depends_on: [confirm-plan]
+    context: fresh
+    hooks:
+      PostToolUse:
+        - matcher: "Write|Edit"
+          response:
+            systemMessage: >
+              You modified a file. Run the type checker NOW: `bun run type-check`
+              If it fails, fix before proceeding. Do not accumulate type errors.
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 4: VALIDATE — Deterministic quality gates
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: validate
+    bash: |
+      echo "=== TYPE CHECK ==="
+      bun run type-check 2>&1
+      TC_EXIT=$?
+
+      echo ""
+      echo "=== LINT ==="
+      bun run lint 2>&1
+      LINT_EXIT=$?
+
+      echo ""
+      echo "=== FORMAT CHECK ==="
+      bun run format:check 2>&1
+      FMT_EXIT=$?
+
+      echo ""
+      echo "=== TESTS ==="
+      bun run test 2>&1
+      TEST_EXIT=$?
+
+      echo ""
+      echo "=== RESULTS ==="
+      echo "Type check: $([ $TC_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+      echo "Lint: $([ $LINT_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+      echo "Format: $([ $FMT_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+      echo "Tests: $([ $TEST_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+
+      if [ $TC_EXIT -eq 0 ] && [ $LINT_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $TEST_EXIT -eq 0 ]; then
+        echo "VALIDATION_STATUS: ALL_PASS"
+      else
+        echo "VALIDATION_STATUS: HAS_FAILURES"
+      fi
+    depends_on: [implement-tasks]
+    timeout: 300000
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 5: FIX VALIDATION — Auto-fix any failures
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: fix-validation
+    prompt: |
+      Review validation results and fix any failures.
+
+      ## Validation Output
+      $validate.output
+
+      ## Rules
+
+      - If "VALIDATION_STATUS: ALL_PASS", say "All checks passed" and stop
+      - If failures exist:
+        1. Fix type errors first
+        2. Then lint errors (run `bun run lint:fix` for auto-fixable)
+        3. Then format (run `bun run format` to auto-fix)
+        4. Then failing tests (read test output, fix code)
+      - After fixes, run: `bun run validate`
+      - Do NOT add features or improvements — only fix what's broken
+    depends_on: [validate]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 6: FINALIZE PR — Create PR with template
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: finalize-pr
+    prompt: |
+      Create a pull request for the implemented feature.
+
+      ## Context
+      - Feature: $ARGUMENTS
+      - Progress: Read `$ARTIFACTS_DIR/progress.md`
+
+      ## Instructions
+
+      1. Stage and commit any remaining changes with a descriptive message
+      2. Push: `git push -u origin HEAD`
+      3. Check if PR already exists: `gh pr list --head $(git branch --show-current)`
+      4. If PR exists, update it; if not, create one with format:
+
+      ```
+      ## Summary
+      [2-3 bullet points describing what was implemented]
+
+      ## Changes
+      [List of files changed and why]
+
+      ## Quality Gates
+      - [x] Type check passes
+      - [x] Lint passes
+      - [x] Tests pass
+      - [x] Code review pending
+
+      ## Test Plan
+      [How to verify the changes work]
+      ```
+
+      5. Save PR URL to `$ARTIFACTS_DIR/.pr-url`
+      6. Save PR number to `$ARTIFACTS_DIR/.pr-number`
+    depends_on: [fix-validation]
+    context: fresh
+    hooks:
+      PreToolUse:
+        - matcher: "Write|Edit"
+          response:
+            hookSpecificOutput:
+              hookEventName: PreToolUse
+              permissionDecision: deny
+              permissionDecisionReason: "Finalize PR node — do not modify source files. Use only git and gh commands."
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 7: CODE REVIEW — 5 parallel review agents
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: review-scope
+    prompt: |
+      You are determining the review scope for a PR.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD --stat` to see all changed files
+      2. Run `git diff $BASE_BRANCH...HEAD --numstat` to get line counts
+      3. Read `$ARTIFACTS_DIR/.scope` for the defined scope limits
+      4. Classify the PR complexity: SMALL (< 200 lines), MEDIUM (200-500), LARGE (> 500)
+      5. Determine which review agents to run (all 5 for MEDIUM/LARGE, subset for SMALL)
+
+      ## Output
+
+      Write scope to `$ARTIFACTS_DIR/review-scope.md`:
+      ```
+      # Review Scope
+
+      ## PR Info
+      - Files changed: N
+      - Lines added: N
+      - Lines removed: N
+      - Complexity: SMALL/MEDIUM/LARGE
+
+      ## Changed Files
+      [list]
+
+      ## Review Agents to Run
+      - [x] code-review (always)
+      - [x] error-handling (always)
+      - [x] test-coverage (MEDIUM/LARGE)
+      - [x] comment-quality (MEDIUM/LARGE)
+      - [x] docs-impact (MEDIUM/LARGE)
+      ```
+    depends_on: [finalize-pr]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  - id: sync
+    prompt: |
+      Sync the PR branch with the latest base branch.
+
+      ## Instructions
+
+      1. Run `git fetch origin $BASE_BRANCH`
+      2. Check if rebase is needed: `git log --oneline origin/$BASE_BRANCH..HEAD | wc -l`
+      3. If behind, rebase: `git rebase origin/$BASE_BRANCH`
+      4. If conflicts arise, resolve them carefully:
+         - Keep our changes where intent is clear
+         - For ambiguous conflicts, note them
+      5. Force push: `git push --force-with-lease`
+      6. Report sync status
+
+      ## Output
+
+      Report sync status. If rebase was needed, report what was rebased.
+    depends_on: [review-scope]
+    context: fresh
+
+  - id: code-review
+    prompt: |
+      You are a senior code reviewer. Your job is to FIND BUGS and LOGIC ERRORS.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD` to see the full diff
+      2. For each changed file, review for:
+         - Bugs and logic errors
+         - Type safety gaps (any usage, unsafe casts)
+         - Race conditions or concurrency issues
+         - Off-by-one errors, null/undefined access
+         - Incorrect API usage
+         - Missing return statements or error paths
+      3. Rate each finding: CRITICAL (must fix), HIGH (should fix), LOW (nice to fix)
+
+      ## Output Format
+
+      ```
+      ## Code Review Findings
+
+      ### CRITICAL
+      - [file:line] description
+
+      ### HIGH
+      - [file:line] description
+
+      ### LOW
+      - [file:line] description
+
+      ### Summary
+      CRITICAL: N | HIGH: N | LOW: N
+      Verdict: PASS / NEEDS_FIXES
+      ```
+    depends_on: [sync]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  - id: error-handling
+    prompt: |
+      You are an error handling specialist reviewing code changes.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD` to see the full diff
+      2. Review for:
+         - Missing try/catch around async operations
+         - Unhandled promise rejections
+         - Swallowed errors (empty catch blocks)
+         - Missing error propagation
+         - Incorrect error classification
+         - Missing input validation
+         - Database error handling (connection failures, constraint violations)
+         - Network error handling (timeouts, retries)
+      3. Rate each finding: CRITICAL, HIGH, or LOW
+
+      ## Output Format
+
+      ```
+      ## Error Handling Review
+
+      ### CRITICAL
+      - [file:line] description
+
+      ### HIGH
+      - [file:line] description
+
+      ### LOW
+      - [file:line] description
+
+      ### Summary
+      CRITICAL: N | HIGH: N | LOW: N
+      ```
+    depends_on: [sync]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  - id: test-coverage
+    prompt: |
+      You are a test coverage specialist reviewing code changes.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD` to see the full diff
+      2. For each new function or method added, check if there's a corresponding test
+      3. For each bug fix, check if there's a regression test
+      4. For each new API endpoint or route, check if there's an integration test
+      5. Review existing tests for quality:
+         - Do they test the right things?
+         - Are assertions meaningful?
+         - Are edge cases covered?
+      6. Rate findings: CRITICAL (missing tests for critical path), HIGH, LOW
+
+      ## Output Format
+
+      ```
+      ## Test Coverage Review
+
+      ### CRITICAL
+      - [file:line] description
+
+      ### HIGH
+      - [file:line] description
+
+      ### LOW
+      - [file:line] description
+
+      ### Summary
+      CRITICAL: N | HIGH: N | LOW: N
+      Uncovered new code: [list functions/methods without tests]
+      ```
+    depends_on: [sync]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  - id: comment-quality
+    prompt: |
+      You are reviewing comment and documentation quality in code changes.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD` to see the full diff
+      2. Review for:
+         - Missing JSDoc on exported functions/types
+         - Misleading or outdated comments
+         - TODO/FIXME without context or issue reference
+         - Commented-out code that should be removed
+         - Over-commenting obvious code
+         - Under-commenting complex logic
+      3. Check that new types/interfaces have descriptions
+      4. Rate findings: CRITICAL, HIGH, or LOW
+
+      ## Output Format
+
+      ```
+      ## Comment Quality Review
+
+      ### HIGH
+      - [file:line] description
+
+      ### LOW
+      - [file:line] description
+
+      ### Summary
+      HIGH: N | LOW: N
+      ```
+    depends_on: [sync]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  - id: docs-impact
+    prompt: |
+      You are reviewing whether documentation needs updates for the code changes.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD --stat` to see changed files
+      2. Run `git diff $BASE_BRANCH...HEAD` to see the full diff
+      3. Check if changes affect:
+         - Public API or exported interfaces
+         - Configuration options
+         - Environment variables
+         - CLI commands or flags
+         - Database schema
+         - README or setup instructions
+         - CLAUDE.md or other documentation files
+      4. If any of these changed, the corresponding docs must be updated
+      5. Rate findings: CRITICAL (breaking change without docs), HIGH, LOW
+
+      ## Output Format
+
+      ```
+      ## Documentation Impact Review
+
+      ### CRITICAL
+      - description of missing doc update
+
+      ### HIGH
+      - description
+
+      ### LOW
+      - description
+
+      ### Summary
+      CRITICAL: N | HIGH: N | LOW: N
+      Docs to update: [list files]
+      ```
+    depends_on: [sync]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 7b: SYNTHESIZE — Merge all review findings
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: synthesize
+    prompt: |
+      You are synthesizing code review findings from 5 specialized review agents.
+
+      ## Code Review
+      $code-review.output
+
+      ## Error Handling Review
+      $error-handling.output
+
+      ## Test Coverage Review
+      $test-coverage.output
+
+      ## Comment Quality Review
+      $comment-quality.output
+
+      ## Documentation Impact Review
+      $docs-impact.output
+
+      ## Instructions
+
+      1. Deduplicate findings across agents (same issue flagged by multiple agents)
+      2. Merge into a single prioritized list: CRITICAL → HIGH → LOW
+      3. For each CRITICAL and HIGH finding, specify:
+         - File and line
+         - What's wrong
+         - Suggested fix (be specific)
+      4. Create a decision matrix:
+
+      | # | Severity | File | Issue | Fix Effort | Action |
+      |---|----------|------|-------|------------|--------|
+      | 1 | CRITICAL | ... | ... | S/M/L | FIX |
+
+      ## Output
+
+      Write synthesis to `$ARTIFACTS_DIR/review-synthesis.md`:
+      ```
+      # Review Synthesis
+
+      ## Decision Matrix
+      [table above]
+
+      ## Must Fix (CRITICAL + HIGH)
+      [numbered list with specific fixes]
+
+      ## Nice to Fix (LOW)
+      [numbered list]
+
+      ## Stats
+      - Total findings: N (after dedup)
+      - CRITICAL: N | HIGH: N | LOW: N
+      - Recommended action: FIX_AND_REVIEW / PASS
+      ```
+    depends_on: [code-review, error-handling, test-coverage, comment-quality, docs-impact]
+    trigger_rule: one_success
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 7c: FIX REVIEW — Address CRITICAL/HIGH findings
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: implement-fixes
+    prompt: |
+      Fix code review findings rated CRITICAL or HIGH.
+
+      ## Review Synthesis
+      Read `$ARTIFACTS_DIR/review-synthesis.md`
+
+      ## Rules
+
+      - Fix ONLY CRITICAL and HIGH findings from the synthesis
+      - Ignore LOW findings (they are advisory)
+      - If synthesis says PASS with no CRITICAL/HIGH, say "No fixes needed" and stop
+      - For each fix:
+        1. Read the file mentioned
+        2. Apply the specific fix suggested in the synthesis
+        3. Run the verify command for that area (type-check, lint, test)
+      - After ALL fixes, run full validation: `bun run validate`
+      - Commit fixes with message: "fix: address code review findings"
+
+      ## Output
+
+      Report which findings were fixed and validation results.
+    depends_on: [synthesize]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PHASE 8: FINAL SUMMARY & FOLLOW-UP
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: workflow-summary
+    prompt: |
+      Generate the final workflow summary.
+
+      ## Context
+      - Feature: $ARGUMENTS
+      - Progress: Read `$ARTIFACTS_DIR/progress.md`
+      - Review Synthesis: Read `$ARTIFACTS_DIR/review-synthesis.md`
+      - PR URL: Read `$ARTIFACTS_DIR/.pr-url` (if exists)
+
+      ## Instructions
+
+      1. Summarize what was implemented
+      2. List all commits made
+      3. Report review findings stats (how many CRITICAL/HIGH/LOW, how many fixed)
+      4. List any remaining LOW findings as follow-up recommendations
+      5. If PR exists, post a summary comment using `gh pr comment`
+
+      ## Output
+
+      Write final summary to `$ARTIFACTS_DIR/final-summary.md`:
+      ```
+      # Implementation Summary
+
+      ## What Was Implemented
+      [bullet points]
+
+      ## Commits
+      [list]
+
+      ## Review Stats
+      - CRITICAL: N (all fixed)
+      - HIGH: N (all fixed)
+      - LOW: N (advisory, not fixed)
+
+      ## Follow-up Recommendations
+      [LOW findings + other suggestions]
+
+      ## Decision Matrix
+      | Area | Status | Notes |
+      |------|--------|-------|
+      | Implementation | ✅/❌ | ... |
+      | Type Check | ✅/❌ | ... |
+      | Lint | ✅/❌ | ... |
+      | Tests | ✅/❌ | ... |
+      | Code Review | ✅/❌ | ... |
+      ```
+    depends_on: [implement-fixes]
+    context: fresh
+    hooks:
+      PreToolUse:
+        - matcher: "Write|Edit"
+          response:
+            hookSpecificOutput:
+              hookEventName: PreToolUse
+              permissionDecision: deny
+              permissionDecisionReason: "Summary node — do not modify source files. Read-only + gh comment only."
