@@ -1,0 +1,35 @@
+name: archon-bmad-full-cycle
+description: |
+  BMAD full development cycle for a single story. Orchestrates story creation,
+  implementation with gates, adversarial code review, and QA review phases in sequence.
+
+  Use when: User wants the complete BMAD lifecycle for a single story from creation to QA.
+  NOT for: Individual phases (use create-story, dev-story, code-review, or qa-review).
+  NOT for: Multi-story epics (use archon-bmad-epic-orchestrator).
+provider: claude
+nodes:
+  - id: create-story
+    prompt: |
+      Create a user story for: $ARGUMENTS
+      Write to $ARTIFACTS_DIR/story.md with acceptance criteria and scope bounds.
+  - id: implement
+    depends_on: [create-story]
+    prompt: |
+      Read $ARTIFACTS_DIR/story.md and implement all acceptance criteria.
+  - id: gate-test
+    depends_on: [implement]
+    bash: bun run test 2>&1; exit $?
+  - id: code-review
+    depends_on: [gate-test]
+    provider: codex
+    prompt: |
+      Perform adversarial code review of the implementation.
+      Write to $ARTIFACTS_DIR/review.md.
+  - id: qa-review
+    depends_on: [code-review]
+    prompt: |
+      Read $ARTIFACTS_DIR/review.md and run QA verification.
+      Write to $ARTIFACTS_DIR/qa-report.md.
+  - id: gate-qa
+    depends_on: [qa-review]
+    bash: bun run test 2>&1; exit $?
