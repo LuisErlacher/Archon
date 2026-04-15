@@ -131,5 +131,82 @@ describe('bundled-defaults', () => {
         expect(hasNodes).toBe(true);
       }
     });
+
+    // T-002: BMAD workflow registrations — pending impl I-007 (adds imports + map entries)
+    // These tests will pass once I-007 registers the 6 BMAD workflows in bundled-defaults.ts
+    it.todo('should include 6 BMAD workflows (19 total)', () => {
+      const expectedBmadWorkflows = [
+        'archon-bmad-create-story',
+        'archon-bmad-dev-story',
+        'archon-bmad-code-review',
+        'archon-bmad-qa-review',
+        'archon-bmad-full-cycle',
+        'archon-bmad-epic-orchestrator',
+      ];
+
+      for (const wf of expectedBmadWorkflows) {
+        expect(BUNDLED_WORKFLOWS).toHaveProperty(wf);
+      }
+
+      // Total: 13 existing + 6 BMAD = 19
+      expect(Object.keys(BUNDLED_WORKFLOWS)).toHaveLength(19);
+    });
+
+    it.todo('all 6 BMAD workflows should have non-empty content with nodes:', () => {
+      const bmadWorkflows = [
+        'archon-bmad-create-story',
+        'archon-bmad-dev-story',
+        'archon-bmad-code-review',
+        'archon-bmad-qa-review',
+        'archon-bmad-full-cycle',
+        'archon-bmad-epic-orchestrator',
+      ];
+
+      for (const name of bmadWorkflows) {
+        const content = BUNDLED_WORKFLOWS[name];
+        expect(content).toBeDefined();
+        expect(typeof content).toBe('string');
+        expect(content.length).toBeGreaterThan(50);
+        expect(content).toContain('name:');
+        expect(content).toContain('description:');
+        expect(content).toContain('nodes:');
+      }
+    });
+
+    it.todo('archon-bmad-dev-story should have gate nodes (test, lint, typecheck)', () => {
+      const content = BUNDLED_WORKFLOWS['archon-bmad-dev-story'];
+      expect(content).toContain('gate-test');
+      expect(content).toContain('gate-lint');
+      expect(content).toContain('gate-typecheck');
+      expect(content).toContain('bash:');
+    });
+
+    it.todo('archon-bmad-code-review should use codex provider override', () => {
+      const content = BUNDLED_WORKFLOWS['archon-bmad-code-review'];
+      expect(content).toContain('provider: codex');
+    });
+
+    it.todo('archon-bmad-epic-orchestrator should have loop node and interactive flag', () => {
+      const content = BUNDLED_WORKFLOWS['archon-bmad-epic-orchestrator'];
+      expect(content).toContain('loop:');
+      expect(content).toContain('interactive: true');
+      expect(content).toContain('until_bash:');
+    });
+
+    it.todo('all BMAD workflows should reference $ARTIFACTS_DIR', () => {
+      const bmadWorkflows = [
+        'archon-bmad-create-story',
+        'archon-bmad-dev-story',
+        'archon-bmad-code-review',
+        'archon-bmad-qa-review',
+        'archon-bmad-full-cycle',
+        'archon-bmad-epic-orchestrator',
+      ];
+
+      for (const name of bmadWorkflows) {
+        const content = BUNDLED_WORKFLOWS[name];
+        expect(content).toContain('$ARTIFACTS_DIR');
+      }
+    });
   });
 });
