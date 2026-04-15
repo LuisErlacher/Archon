@@ -86,7 +86,7 @@ const memorySessions = new Map<string, AgentMessage[]>();
 const MAX_TOOL_OUTPUT = 50_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 2000;
-const STREAM_IDLE_TIMEOUT_MS = 60_000;
+const STREAM_IDLE_TIMEOUT_MS = 180_000;
 const GLOBAL_PROMPT_TIMEOUT_MS = 30 * 60 * 1000;
 /** Per-chunk timeout for the queue consumer (prevents stalls when the SSE stream hangs internally). */
 const CHUNK_ITERATION_TIMEOUT_MS = 5 * 60 * 1000;
