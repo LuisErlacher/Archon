@@ -3126,8 +3126,7 @@ export function registerApiRoutes(
     // timing leaks from short-circuit length comparison.
     const providedHash = createHmac('sha256', 'archon-pw-compare').update(body.password).digest();
     const expectedHash = createHmac('sha256', 'archon-pw-compare').update(webUiPassword).digest();
-    const matches = timingSafeEqual(providedHash, expectedHash);
-    if (!matches) {
+    if (!timingSafeEqual(providedHash, expectedHash)) {
       getLog().warn({}, 'auth.login_failed');
       return c.json({ error: 'Invalid password' }, 401);
     }
