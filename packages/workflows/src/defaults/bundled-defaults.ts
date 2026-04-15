@@ -37,7 +37,7 @@ import archonValidatePrE2eMainCmd from '../../../../.archon/commands/defaults/ar
 import archonValidatePrReportCmd from '../../../../.archon/commands/defaults/archon-validate-pr-report.md' with { type: 'text' };
 
 // =============================================================================
-// Default Workflows (13 total)
+// Default Workflows (19 total)
 // =============================================================================
 
 import archonAssistWf from '../../../../.archon/workflows/defaults/archon-assist.yaml' with { type: 'text' };
@@ -53,6 +53,14 @@ import archonInteractivePrdWf from '../../../../.archon/workflows/defaults/archo
 import archonPivLoopWf from '../../../../.archon/workflows/defaults/archon-piv-loop.yaml' with { type: 'text' };
 import archonAdversarialDevWf from '../../../../.archon/workflows/defaults/archon-adversarial-dev.yaml' with { type: 'text' };
 import archonWorkflowBuilderWf from '../../../../.archon/workflows/defaults/archon-workflow-builder.yaml' with { type: 'text' };
+
+// BMAD workflows (6)
+import archonBmadCreateStoryWf from '../../../../.archon/workflows/defaults/archon-bmad-create-story.yaml' with { type: 'text' };
+import archonBmadDevStoryWf from '../../../../.archon/workflows/defaults/archon-bmad-dev-story.yaml' with { type: 'text' };
+import archonBmadCodeReviewWf from '../../../../.archon/workflows/defaults/archon-bmad-code-review.yaml' with { type: 'text' };
+import archonBmadQaReviewWf from '../../../../.archon/workflows/defaults/archon-bmad-qa-review.yaml' with { type: 'text' };
+import archonBmadFullCycleWf from '../../../../.archon/workflows/defaults/archon-bmad-full-cycle.yaml' with { type: 'text' };
+import archonBmadEpicOrchestratorWf from '../../../../.archon/workflows/defaults/archon-bmad-epic-orchestrator.yaml' with { type: 'text' };
 
 // =============================================================================
 // Exports
@@ -102,6 +110,12 @@ export const BUNDLED_WORKFLOWS: Record<string, string> = {
   'archon-piv-loop': archonPivLoopWf,
   'archon-adversarial-dev': archonAdversarialDevWf,
   'archon-workflow-builder': archonWorkflowBuilderWf,
+  'archon-bmad-create-story': archonBmadCreateStoryWf,
+  'archon-bmad-dev-story': archonBmadDevStoryWf,
+  'archon-bmad-code-review': archonBmadCodeReviewWf,
+  'archon-bmad-qa-review': archonBmadQaReviewWf,
+  'archon-bmad-full-cycle': archonBmadFullCycleWf,
+  'archon-bmad-epic-orchestrator': archonBmadEpicOrchestratorWf,
 };
 
 /**

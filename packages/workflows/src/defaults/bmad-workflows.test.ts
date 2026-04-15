@@ -46,6 +46,7 @@ import {
   isCommandNode,
   type DagNode,
 } from '../schemas';
+import { BUNDLED_WORKFLOWS } from './bundled-defaults';
 
 // ---------------------------------------------------------------------------
 // Inline BMAD workflow YAML definitions (representative of impl I-001..I-006)
@@ -865,6 +866,155 @@ nodes:
         expect(result.workflow!.interactive).toBeUndefined();
       }
     });
+  });
+});
+
+// ===========================================================================
+// I-009: Comprehensive BMAD workflow tests against bundled YAML files
+// ===========================================================================
+
+describe('BMAD Workflows — I-009: Bundled YAML file validation', () => {
+  const BMAD_WORKFLOW_NAMES = [
+    'archon-bmad-create-story',
+    'archon-bmad-dev-story',
+    'archon-bmad-code-review',
+    'archon-bmad-qa-review',
+    'archon-bmad-full-cycle',
+    'archon-bmad-epic-orchestrator',
+  ] as const;
+
+  describe('all 6 BMAD workflows are registered in BUNDLED_WORKFLOWS', () => {
+    for (const name of BMAD_WORKFLOW_NAMES) {
+      it(`should have ${name} in BUNDLED_WORKFLOWS`, () => {
+        expect(BUNDLED_WORKFLOWS).toHaveProperty(name);
+        expect(BUNDLED_WORKFLOWS[name]).toBeDefined();
+        expect(typeof BUNDLED_WORKFLOWS[name]).toBe('string');
+      });
+    }
+  });
+
+  describe('all bundled BMAD workflows parse without errors', () => {
+    for (const name of BMAD_WORKFLOW_NAMES) {
+      it(`should parse ${name} from bundled content without errors`, () => {
+        const yaml = BUNDLED_WORKFLOWS[name];
+        const result = parseWorkflow(yaml, `${name}.yaml`);
+        expect(result.error).toBeNull();
+        expect(result.workflow).not.toBeNull();
+      });
+    }
+  });
+
+  describe('bundled YAML matches inline test YAML structure', () => {
+    it('bundled create-story has correct name and nodes', () => {
+      const result = parseWorkflow(
+        BUNDLED_WORKFLOWS['archon-bmad-create-story'],
+        'archon-bmad-create-story.yaml'
+      );
+      expect(result.workflow?.name).toBe('archon-bmad-create-story');
+      expect(result.workflow?.description).toBeTruthy();
+      const nodeIds = result.workflow!.nodes.map(n => n.id);
+      expect(nodeIds).toContain('write-story');
+      expect(nodeIds).toContain('validate-scope');
+    });
+
+    it('bundled dev-story has gate nodes and loop', () => {
+      const result = parseWorkflow(
+        BUNDLED_WORKFLOWS['archon-bmad-dev-story'],
+        'archon-bmad-dev-story.yaml'
+      );
+      expect(result.workflow?.name).toBe('archon-bmad-dev-story');
+      expect(result.workflow?.provider).toBe('claude');
+      const nodeIds = result.workflow!.nodes.map(n => n.id);
+      expect(nodeIds).toContain('implement');
+      expect(nodeIds).toContain('gate-test');
+      expect(nodeIds).toContain('gate-lint');
+      expect(nodeIds).toContain('gate-typecheck');
+      expect(nodeIds).toContain('fix-and-retry');
+      const loopNode = result.workflow!.nodes.find(n => n.id === 'fix-and-retry');
+      expect(isLoopNode(loopNode!)).toBe(true);
+    });
+
+    it('bundled code-review has codex provider override', () => {
+      const result = parseWorkflow(
+        BUNDLED_WORKFLOWS['archon-bmad-code-review'],
+        'archon-bmad-code-review.yaml'
+      );
+      expect(result.workflow?.name).toBe('archon-bmad-code-review');
+      const reviewNode = result.workflow!.nodes.find(n => n.id === 'review-code');
+      expect(reviewNode).toBeDefined();
+      expect(reviewNode!.provider).toBe('codex');
+    });
+
+    it('bundled qa-review has test and coverage gates', () => {
+      const result = parseWorkflow(
+        BUNDLED_WORKFLOWS['archon-bmad-qa-review'],
+        'archon-bmad-qa-review.yaml'
+      );
+      expect(result.workflow?.name).toBe('archon-bmad-qa-review');
+      const nodeIds = result.workflow!.nodes.map(n => n.id);
+      expect(nodeIds).toContain('write-qa-tests');
+      expect(nodeIds).toContain('gate-tests-pass');
+      expect(nodeIds).toContain('gate-coverage');
+      expect(nodeIds).toContain('qa-report');
+    });
+
+    it('bundled full-cycle orchestrates all phases', () => {
+      const result = parseWorkflow(
+        BUNDLED_WORKFLOWS['archon-bmad-full-cycle'],
+        'archon-bmad-full-cycle.yaml'
+      );
+      expect(result.workflow?.name).toBe('archon-bmad-full-cycle');
+      expect(result.workflow?.provider).toBe('claude');
+      const nodeIds = result.workflow!.nodes.map(n => n.id);
+      expect(nodeIds).toContain('create-story');
+      expect(nodeIds).toContain('implement');
+      expect(nodeIds).toContain('gate-test');
+      expect(nodeIds).toContain('code-review');
+      expect(nodeIds).toContain('qa-review');
+      expect(nodeIds).toContain('gate-qa');
+      const codeReviewNode = result.workflow!.nodes.find(n => n.id === 'code-review');
+      expect(codeReviewNode!.provider).toBe('codex');
+    });
+
+    it('bundled epic-orchestrator has loop and interactive flag', () => {
+      const result = parseWorkflow(
+        BUNDLED_WORKFLOWS['archon-bmad-epic-orchestrator'],
+        'archon-bmad-epic-orchestrator.yaml'
+      );
+      expect(result.workflow?.name).toBe('archon-bmad-epic-orchestrator');
+      expect(result.workflow?.interactive).toBe(true);
+      expect(result.workflow?.provider).toBe('claude');
+      const nodeIds = result.workflow!.nodes.map(n => n.id);
+      expect(nodeIds).toContain('init-epic');
+      expect(nodeIds).toContain('process-stories');
+      expect(nodeIds).toContain('epic-summary');
+      const loopNode = result.workflow!.nodes.find(n => n.id === 'process-stories');
+      expect(isLoopNode(loopNode!)).toBe(true);
+      if (isLoopNode(loopNode!)) {
+        expect(loopNode.loop.fresh_context).toBe(true);
+        expect(loopNode.loop.max_iterations).toBe(20);
+      }
+    });
+  });
+
+  describe('bundled BMAD workflow content integrity', () => {
+    for (const name of BMAD_WORKFLOW_NAMES) {
+      it(`${name} content should contain $ARTIFACTS_DIR`, () => {
+        expect(BUNDLED_WORKFLOWS[name]).toContain('$ARTIFACTS_DIR');
+      });
+
+      it(`${name} content should contain nodes:`, () => {
+        expect(BUNDLED_WORKFLOWS[name]).toContain('nodes:');
+      });
+
+      it(`${name} content should contain name:`, () => {
+        expect(BUNDLED_WORKFLOWS[name]).toContain('name:');
+      });
+
+      it(`${name} content should contain description:`, () => {
+        expect(BUNDLED_WORKFLOWS[name]).toContain('description:');
+      });
+    }
   });
 });
 
