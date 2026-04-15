@@ -31,6 +31,17 @@ export interface CodexProviderDefaults {
   codexBinaryPath?: string;
 }
 
+export interface PiAiProviderDefaults {
+  [key: string]: unknown;
+  model?: string;
+  /** Upstream LLM provider for pi-ai SDK (e.g. 'anthropic', 'openai', 'google', 'zai') */
+  provider?: string;
+  /** Thinking/reasoning level */
+  thinkingLevel?: 'off' | 'low' | 'medium' | 'high' | 'xhigh';
+  /** Extra skill discovery paths */
+  skillPaths?: string[];
+}
+
 /** Generic per-provider defaults bag used by config surfaces and UI. */
 export type ProviderDefaults = Record<string, unknown>;
 
@@ -45,6 +56,8 @@ export interface TokenUsage {
   output: number;
   total?: number;
   cost?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
 }
 
 /**
