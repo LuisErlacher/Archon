@@ -266,10 +266,16 @@ nodes:
 
       ## Instructions
 
+      ## CRITICAL — PR target safety
+      - Always push to `origin` (LuisErlacher/Archon fork) — NEVER to `upstream`
+      - Always create PR with explicit `--repo LuisErlacher/Archon --base dev`
+      - NEVER target upstream (coleam00/Archon)
+
       1. Stage and commit any remaining changes with a descriptive message
-      2. Push: `git push -u origin HEAD`
-      3. Check if PR already exists: `gh pr list --head $(git branch --show-current)`
-      4. If PR exists, update it; if not, create one with format:
+      2. Push: `git push -u origin HEAD` (origin = fork)
+      3. Check if PR already exists: `gh pr list --repo LuisErlacher/Archon --head $(git branch --show-current)`
+      4. If PR exists, update it; if not, create one with explicit flags:
+         `gh pr create --repo LuisErlacher/Archon --base dev --head $(git branch --show-current) --title "..." --body "..."`
 
       ```
       ## Summary

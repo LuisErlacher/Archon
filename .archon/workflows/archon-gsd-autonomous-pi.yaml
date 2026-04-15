@@ -321,9 +321,15 @@ nodes:
 
       ## Instructions
 
+      ## CRITICAL — PR target safety
+      - Always push to `origin` (LuisErlacher/Archon fork) — NEVER to `upstream`
+      - Always create PR with explicit `--repo LuisErlacher/Archon --base dev`
+      - NEVER target the upstream repo (coleam00/Archon) under any circumstances
+
       1. Stage all changes, commit if needed
-      2. Push: `git push -u origin HEAD`
-      3. Create PR:
+      2. Push: `git push -u origin HEAD` (origin = fork)
+      3. Create PR (use explicit flags to ensure correct target):
+         `gh pr create --repo LuisErlacher/Archon --base dev --head $(git branch --show-current) --title "..." --body "..."`
 
       ```
       ## Batch: [Batch Name]
