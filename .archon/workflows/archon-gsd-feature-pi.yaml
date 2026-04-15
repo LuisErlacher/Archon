@@ -1,0 +1,361 @@
+name: archon-gsd-feature-pi
+description: |
+  Pi-AI variant of the GSD feature pipeline using GLM-5.1 via pi-ai provider.
+  Same 8-step pipeline as archon-gsd-feature but runs on pi-agent-core with ZAI backend.
+  Triggers: "gsd pi", "pi feature", "glm feature".
+  Input: Feature description, FR numbers, or GitHub issue number.
+
+provider: pi-ai
+model: glm-5.1
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: RESEARCH — Understand what needs to be built
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: research
+    prompt: |
+      You are a senior engineer researching how to implement a feature.
+
+      ## Feature Request
+      $ARGUMENTS
+
+      ## Instructions
+
+      1. Read `CLAUDE.md` to understand the codebase architecture
+      2. Read `docs/PRD.md` to understand the feature in context of the full product vision
+      3. Read `docs/ROADMAP.md` if it exists to see where this feature fits
+      4. Explore the codebase:
+         - Find files related to the feature
+         - Understand existing patterns and conventions
+         - Identify what already exists that can be reused
+      5. If the feature references an SDK (Claude Agent SDK, Codex SDK, pi-ai):
+         - Read relevant docs in `docs/claude-code/agent-sdk/` or `docs/codex-sdk/`
+         - Verify SDK capabilities match what the feature assumes
+      6. Identify risks and unknowns
+
+      ## Output
+
+      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/research.md` with:
+      - What exists (files, APIs, patterns to reuse)
+      - What needs to be created
+      - SDK constraints or limitations discovered
+      - Risks and mitigation strategies
+      - Recommended implementation approach
+
+      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: PLAN — Create detailed implementation plan
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: plan
+    prompt: |
+      You are creating a detailed implementation plan.
+
+      ## Research Findings
+      $research.output
+
+      ## Feature Request
+      $ARGUMENTS
+
+      ## Planning Rules
+
+      - Each task must be independently verifiable (has a verify command)
+      - Order tasks so each builds on the previous
+      - Max 10 tasks per plan — if more needed, split the feature
+      - Include the exact files to create/modify
+      - Include acceptance criteria per task
+      - Follow CLAUDE.md conventions (import patterns, type safety, etc.)
+
+      ## Instructions
+
+      1. Read the research findings
+      2. Create a numbered task list
+      3. For each task specify:
+         - What to do (concrete action, not vague)
+         - Which files to create/modify
+         - How to verify (bash command that exits 0 on success)
+         - Acceptance criteria
+      4. Add a final task: "Run full validation suite"
+
+      ## Output
+
+      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/plan.md` with:
+      ```
+      # Implementation Plan: [Feature Name]
+
+      ## Task 1: [Title]
+      **Files:** path/to/file.ts
+      **Action:** [What to do]
+      **Verify:** `bun run type-check`
+      **AC:** [Acceptance criteria]
+
+      ## Task 2: ...
+      ```
+
+      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
+    depends_on: [research]
+    context: fresh
+    allowed_tools: [read, write, bash, grep, find, ls]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: PLAN-CHECK — Revision loop with stall detection
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: plan-check
+    loop:
+      prompt: |
+        You are a plan quality checker. Review the implementation plan for completeness and correctness.
+
+        ## Plan to Review
+        Read `$ARTIFACTS_DIR/plan.md`
+
+        ## Checklist
+
+        1. **Completeness:** Does the plan cover ALL aspects of the feature request?
+        2. **Verify commands:** Does every task have a concrete verify command?
+        3. **File accuracy:** Do the referenced files exist (or are clearly new files)?
+        4. **Dependency order:** Are tasks ordered correctly (no forward references)?
+        5. **Scope creep:** Does the plan add things NOT in the feature request?
+        6. **Convention compliance:** Does the plan follow CLAUDE.md patterns?
+        7. **Missing tests:** Are there tasks for writing tests?
+
+        ## Rules
+
+        - If ALL checks pass: signal COMPLETE
+        - If issues found: fix the plan file directly, then re-check
+        - Track your issue count — if it doesn't decrease between iterations, signal COMPLETE anyway (stall detection)
+
+        When done, output: <promise>COMPLETE</promise>
+      until: COMPLETE
+      max_iterations: 3
+    depends_on: [plan]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 4: EXECUTE — Implement the plan
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: execute
+    loop:
+      prompt: |
+        You are implementing a feature following a detailed plan.
+
+        ## Plan
+        Read `$ARTIFACTS_DIR/plan.md`
+
+        ## Rules
+
+        - Follow the plan EXACTLY — do not add extra improvements
+        - After each file edit, run the task's verify command
+        - If verify fails, fix before moving to next task
+        - Commit each completed task with a descriptive message
+        - If a task is harder than expected, note it but continue
+        - When ALL tasks are done, signal COMPLETE
+
+        ## Progress Tracking
+
+        After completing each task, update `$ARTIFACTS_DIR/progress.md`:
+        ```
+        - [x] Task 1: [title] — commit: [hash]
+        - [x] Task 2: [title] — commit: [hash]
+        - [ ] Task 3: [title] — IN PROGRESS
+        ```
+
+        When all tasks complete: <promise>COMPLETE</promise>
+      until: COMPLETE
+      max_iterations: 20
+      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+    depends_on: [plan-check]
+    context: fresh
+    hooks:
+      PostToolUse:
+        - matcher: "Write|Edit"
+          response:
+            systemMessage: >
+              You modified a file. Run the type checker NOW: `bun run type-check`
+              If it fails, fix before proceeding. Do not accumulate type errors.
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 5: VALIDATE — Deterministic quality gates
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: validate
+    bash: |
+      echo "=== TYPE CHECK ==="
+      bun run type-check 2>&1
+      TC_EXIT=$?
+
+      echo ""
+      echo "=== LINT ==="
+      bun run lint 2>&1
+      LINT_EXIT=$?
+
+      echo ""
+      echo "=== FORMAT CHECK ==="
+      bun run format:check 2>&1
+      FMT_EXIT=$?
+
+      echo ""
+      echo "=== TESTS ==="
+      bun run test 2>&1
+      TEST_EXIT=$?
+
+      echo ""
+      echo "=== RESULTS ==="
+      echo "Type check: $([ $TC_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+      echo "Lint: $([ $LINT_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+      echo "Format: $([ $FMT_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+      echo "Tests: $([ $TEST_EXIT -eq 0 ] && echo 'PASS' || echo 'FAIL')"
+
+      if [ $TC_EXIT -eq 0 ] && [ $LINT_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $TEST_EXIT -eq 0 ]; then
+        echo "VALIDATION_STATUS: ALL_PASS"
+      else
+        echo "VALIDATION_STATUS: HAS_FAILURES"
+      fi
+    depends_on: [execute]
+    timeout: 300000
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 6: FIX VALIDATION — Fix any failures
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fix-validation
+    prompt: |
+      Review validation results and fix any failures.
+
+      ## Validation Output
+      $validate.output
+
+      ## Rules
+
+      - If "VALIDATION_STATUS: ALL_PASS", say "All checks passed" and stop
+      - If failures exist:
+        1. Fix type errors first
+        2. Then lint errors (run `bun run lint:fix` for auto-fixable)
+        3. Then format (run `bun run format` to auto-fix)
+        4. Then failing tests (read test output, fix code)
+      - After fixes, run: `bun run validate`
+      - Do NOT add features or improvements — only fix what's broken
+    depends_on: [validate]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 7: REVIEW — Adversarial code review (read-only)
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: review
+    prompt: |
+      You are an adversarial code reviewer. Your job is to FIND PROBLEMS.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD --stat` to see all changed files
+      2. Run `git diff $BASE_BRANCH...HEAD` to see the full diff
+      3. For each changed file, review for:
+         - Bugs and logic errors
+         - Security vulnerabilities (OWASP top 10)
+         - Type safety gaps (any usage, unsafe casts)
+         - Convention violations (check CLAUDE.md)
+         - Missing error handling
+         - Missing tests for new code
+         - Performance issues
+      4. Rate each finding: CRITICAL (must fix), HIGH (should fix), LOW (nice to fix)
+
+      ## Output
+
+      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/review.md` with:
+      ```
+      # Code Review
+
+      ## CRITICAL
+      - [file:line] [description]
+
+      ## HIGH
+      - [file:line] [description]
+
+      ## LOW
+      - [file:line] [description]
+
+      ## Summary
+      CRITICAL: N | HIGH: N | LOW: N
+      Verdict: PASS / NEEDS_FIXES
+      ```
+
+      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
+
+      Be ruthless. Find at least 3 issues. If you find none, look harder.
+    depends_on: [fix-validation]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 8: FIX REVIEW — Address CRITICAL/HIGH only
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fix-review
+    prompt: |
+      Fix code review findings rated CRITICAL or HIGH.
+
+      ## Review Findings
+      $review.output
+
+      ## Rules
+
+      - Fix ONLY CRITICAL and HIGH findings
+      - Ignore LOW findings (they are advisory)
+      - If review says "PASS" with no CRITICAL/HIGH, say "No fixes needed" and stop
+      - After fixes, run `bun run validate` to confirm nothing broke
+      - Commit fixes separately: "fix: address code review findings"
+    depends_on: [review]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 9: SHIP — Create PR
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: ship
+    prompt: |
+      Create a pull request for the implemented feature.
+
+      ## Context
+      - Feature: $ARGUMENTS
+      - Progress: Read `$ARTIFACTS_DIR/progress.md`
+      - Review: $review.output
+
+      ## Instructions
+
+      1. Stage and commit any remaining changes
+      2. Push: `git push -u origin HEAD`
+      3. Check if PR exists: `gh pr list --head $(git branch --show-current)`
+      4. Create PR with format:
+
+      ```
+      ## Summary
+      [2-3 bullet points describing what was implemented]
+
+      ## Changes
+      [List of files changed and why]
+
+      ## Quality Gates
+      - [x] Type check passes
+      - [x] Lint passes
+      - [x] Tests pass
+      - [x] Code review completed
+
+      ## PRD Reference
+      [Which FRs from docs/PRD.md this implements]
+      ```
+
+      5. Save PR URL to `$ARTIFACTS_DIR/.pr-url`
+    depends_on: [fix-review]
+    context: fresh
+    hooks:
+      PreToolUse:
+        - matcher: "Write|Edit"
+          response:
+            hookSpecificOutput:
+              hookEventName: PreToolUse
+              permissionDecision: deny
+              permissionDecisionReason: "Ship node — do not modify source files. Use only git and gh commands."

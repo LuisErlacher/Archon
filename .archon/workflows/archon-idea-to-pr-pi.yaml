@@ -48,7 +48,7 @@ nodes:
 
       ## Output
 
-      Write research findings AND plan to `$ARTIFACTS_DIR/plan.md`:
+      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/plan.md` with:
       ```
       # Implementation Plan: [Feature Name]
 
@@ -66,10 +66,9 @@ nodes:
 
       ## Task 2: ...
       ```
+
+      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
     context: fresh
-    denied_tools: [Write, Edit]
-    # Note: denied_tools will be ignored by pi-ai provider (Claude-only feature).
-    # The prompt instructions serve as behavioral guardrails instead.
 
   # ═══════════════════════════════════════════════════════════════════
   # PHASE 1: SETUP — Branch setup + scope extraction
@@ -320,7 +319,7 @@ nodes:
 
       ## Output
 
-      Write scope to `$ARTIFACTS_DIR/review-scope.md`:
+      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/review-scope.md` with:
       ```
       # Review Scope
 
@@ -340,9 +339,9 @@ nodes:
       - [x] comment-quality (MEDIUM/LARGE)
       - [x] docs-impact (MEDIUM/LARGE)
       ```
+      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
     depends_on: [finalize-pr]
     context: fresh
-    denied_tools: [Write, Edit]
 
   - id: sync
     prompt: |
