@@ -44,6 +44,7 @@ import { parsePiAiConfig } from './config';
 import { PI_AI_CAPABILITIES } from './capabilities';
 import { discoverSkills, buildSkillSystemPrompt } from './skills';
 import { createLogger } from '@archon/paths';
+import { PiAiSessionStore } from './pi-ai-sessions';
 import { randomUUID } from 'crypto';
 import { readdir, readFile, writeFile } from 'fs/promises';
 import { resolve, isAbsolute } from 'path';
@@ -70,17 +71,22 @@ function classifyError(errorMessage: string): 'rate_limit' | 'auth' | 'unknown' 
 
 // ─── Session Storage ─────────────────────────────────────────────────────────
 
-const sessions = new Map<string, AgentMessage[]>();
+/** Lazy-initialized session store (file-based persistence) */
+let sessionStore: PiAiSessionStore | undefined;
+function getSessionStore(): PiAiSessionStore {
+  if (!sessionStore) sessionStore = new PiAiSessionStore();
+  return sessionStore;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_TOOL_OUTPUT = 50_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 2000;
-const STREAM_IDLE_TIMEOUT_MS = 30_000;
-const GLOBAL_PROMPT_TIMEOUT_MS = 5 * 60 * 1000;
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+const GLOBAL_PROMPT_TIMEOUT_MS = 30 * 60 * 1000;
 /** Per-chunk timeout for the queue consumer (prevents stalls when the SSE stream hangs internally). */
-const CHUNK_ITERATION_TIMEOUT_MS = 10 * 60 * 1000;
+const CHUNK_ITERATION_TIMEOUT_MS = 5 * 60 * 1000;
 
 function truncateOutput(output: string): string {
   if (output.length <= MAX_TOOL_OUTPUT) return output;
@@ -546,7 +552,9 @@ export class PiAiProvider implements IAgentProvider {
       throw enriched;
     }
 
-    const previousMessages = resumeSessionId ? (sessions.get(resumeSessionId) ?? []) : [];
+    const previousMessages = resumeSessionId
+      ? ((await getSessionStore().load(resumeSessionId)) ?? [])
+      : [];
 
     // ── Tool filtering (from nodeConfig) ────────────────────────────────────
     let tools = createCodingTools(cwd);
@@ -701,13 +709,11 @@ export class PiAiProvider implements IAgentProvider {
         if (streamEnded) return;
         streamEnded = true;
         getLog().warn({ timeoutMs: STREAM_IDLE_TIMEOUT_MS }, 'pi_ai.stream_idle_timeout');
-        const messages = agent.state?.messages ?? [];
-        const newSessionId = randomUUID();
-        sessions.set(newSessionId, messages);
-        queue.push({ type: 'result', sessionId: newSessionId });
-        queue.end();
         unsubscribe();
         agent.abort();
+        queue.fail(
+          new Error(`Pi-AI stream idle timeout: no events received for ${STREAM_IDLE_TIMEOUT_MS}ms`)
+        );
       }, STREAM_IDLE_TIMEOUT_MS);
     };
 
@@ -750,7 +756,7 @@ export class PiAiProvider implements IAgentProvider {
           clearTimeout(globalTimeout);
           if (idleTimer) clearTimeout(idleTimer);
           const newSessionId = randomUUID();
-          sessions.set(newSessionId, event.messages);
+          await getSessionStore().save(newSessionId, event.messages);
           queue.push({ type: 'result', sessionId: newSessionId });
           queue.end();
           break;
@@ -766,13 +772,13 @@ export class PiAiProvider implements IAgentProvider {
         { timeoutMs: GLOBAL_PROMPT_TIMEOUT_MS, hasReceivedContent },
         'pi_ai.global_prompt_timeout'
       );
-      const messages = agent.state?.messages ?? [];
-      const newSessionId = randomUUID();
-      sessions.set(newSessionId, messages);
-      queue.push({ type: 'result', sessionId: newSessionId });
-      queue.end();
       unsubscribe();
       agent.abort();
+      queue.fail(
+        new Error(
+          `Pi-AI global prompt timeout: node exceeded ${GLOBAL_PROMPT_TIMEOUT_MS}ms hard cap`
+        )
+      );
     }, GLOBAL_PROMPT_TIMEOUT_MS);
 
     agent.prompt(prompt).catch((err: Error) => {
@@ -838,15 +844,11 @@ export class PiAiProvider implements IAgentProvider {
           streamEnded = true;
           clearTimeout(globalTimeout);
           if (idleTimer) clearTimeout(idleTimer);
-          // Force-save whatever we have so far
-          const messages = agent.state?.messages ?? [];
-          const newSessionId = randomUUID();
-          sessions.set(newSessionId, messages);
-          // Push a result chunk so the caller gets a sessionId
-          yield { type: 'result', sessionId: newSessionId } as MessageChunk;
           unsubscribe();
           agent.abort();
-          break;
+          throw new Error(
+            `Pi-AI chunk iteration timeout: no chunk received for ${CHUNK_ITERATION_TIMEOUT_MS}ms (stream stuck)`
+          );
         }
 
         if (raceResult.result.done) break;
