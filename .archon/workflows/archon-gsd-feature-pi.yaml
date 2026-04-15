@@ -36,15 +36,14 @@ nodes:
 
       ## Output
 
-      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/research.md` with:
+      Write research findings to `$ARTIFACTS_DIR/research.md`:
       - What exists (files, APIs, patterns to reuse)
       - What needs to be created
       - SDK constraints or limitations discovered
       - Risks and mitigation strategies
       - Recommended implementation approach
-
-      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
     context: fresh
+    denied_tools: [Write, Edit]
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 2: PLAN — Create detailed implementation plan
@@ -82,7 +81,7 @@ nodes:
 
       ## Output
 
-      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/plan.md` with:
+      Write the plan to `$ARTIFACTS_DIR/plan.md`:
       ```
       # Implementation Plan: [Feature Name]
 
@@ -94,11 +93,9 @@ nodes:
 
       ## Task 2: ...
       ```
-
-      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
     depends_on: [research]
     context: fresh
-    allowed_tools: [read, write, bash, grep, find, ls]
+    allowed_tools: [Read]
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 3: PLAN-CHECK — Revision loop with stall detection
@@ -266,7 +263,7 @@ nodes:
 
       ## Output
 
-      Use the `write` tool (NOT bash heredoc) to create `$ARTIFACTS_DIR/review.md` with:
+      Write review to `$ARTIFACTS_DIR/review.md`:
       ```
       # Code Review
 
@@ -284,11 +281,10 @@ nodes:
       Verdict: PASS / NEEDS_FIXES
       ```
 
-      IMPORTANT: always create files via the `write` tool. Never use `cat > file << EOF` heredoc for large content.
-
       Be ruthless. Find at least 3 issues. If you find none, look harder.
     depends_on: [fix-validation]
     context: fresh
+    denied_tools: [Write, Edit]
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 8: FIX REVIEW — Address CRITICAL/HIGH only
@@ -326,16 +322,10 @@ nodes:
 
       ## Instructions
 
-      ## CRITICAL — PR target safety
-      - Always push to `origin` (LuisErlacher/Archon fork) — NEVER to `upstream`
-      - Always create PR with explicit `--repo LuisErlacher/Archon --base dev`
-      - NEVER target upstream (coleam00/Archon)
-
       1. Stage and commit any remaining changes
-      2. Push: `git push -u origin HEAD` (origin = fork)
-      3. Check if PR exists: `gh pr list --repo LuisErlacher/Archon --head $(git branch --show-current)`
-      4. Create PR with explicit flags:
-         `gh pr create --repo LuisErlacher/Archon --base dev --head $(git branch --show-current) --title "..." --body "..."`
+      2. Push: `git push -u origin HEAD`
+      3. Check if PR exists: `gh pr list --head $(git branch --show-current)`
+      4. Create PR with format:
 
       ```
       ## Summary
