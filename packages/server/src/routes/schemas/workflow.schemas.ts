@@ -279,3 +279,46 @@ export const nodeGateResultBodySchema = z
 
 /** Generic node action response (node complete, gate result). */
 export const nodeActionResponseSchema = actionResponseBaseSchema.openapi('NodeActionResponse');
+
+// =========================================================================
+// Audit trail schemas
+// =========================================================================
+
+/** GET /api/workflows/runs/:runId/events query params. */
+export const workflowEventsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  event_type: z.string().max(100).optional(),
+});
+
+/** GET /api/workflows/runs/:runId/events response. */
+export const workflowEventsResponseSchema = z
+  .object({
+    events: z.array(workflowEventSchema),
+    total: z.number(),
+    limit: z.number(),
+    offset: z.number(),
+  })
+  .openapi('WorkflowEventsResponse');
+
+/** A single entry in the workflow timeline. */
+export const timelineEntrySchema = z
+  .object({
+    timestamp: z.string(),
+    node_id: z.string().nullable(),
+    event: z.string(),
+    duration_ms: z.number().nullable(),
+    details: z.record(z.unknown()),
+  })
+  .openapi('TimelineEntry');
+
+/** GET /api/workflows/runs/:runId/timeline response. */
+export const workflowTimelineResponseSchema = z
+  .object({
+    run_id: z.string(),
+    workflow_name: z.string(),
+    status: workflowRunStatusSchema,
+    timeline: z.array(timelineEntrySchema),
+    total_duration_ms: z.number().nullable(),
+  })
+  .openapi('WorkflowTimelineResponse');

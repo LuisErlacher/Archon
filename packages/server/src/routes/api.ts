@@ -100,6 +100,10 @@ import {
   nodeCompleteBodySchema,
   nodeGateResultBodySchema,
   nodeActionResponseSchema,
+  workflowEventsQuerySchema,
+  workflowEventsResponseSchema,
+  timelineEntrySchema,
+  workflowTimelineResponseSchema,
 } from './schemas/workflow.schemas';
 import {
   runSummaryResponseSchema,
@@ -860,6 +864,45 @@ const nodeGateResultRoute = createRoute({
       description: 'Gate result recorded',
     },
     400: jsonError('Bad request'),
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+// =========================================================================
+// Audit trail route configs
+// =========================================================================
+
+const getWorkflowRunEventsRoute = createRoute({
+  method: 'get',
+  path: '/api/workflows/runs/{runId}/events',
+  tags: ['Workflows'],
+  summary: 'List workflow run events with pagination',
+  request: {
+    params: z.object({ runId: z.string() }),
+    query: workflowEventsQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: workflowEventsResponseSchema } },
+      description: 'Paginated workflow events',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const getWorkflowRunTimelineRoute = createRoute({
+  method: 'get',
+  path: '/api/workflows/runs/{runId}/timeline',
+  tags: ['Workflows'],
+  summary: 'Get computed timeline for a workflow run',
+  request: { params: z.object({ runId: z.string() }) },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: workflowTimelineResponseSchema } },
+      description: 'Workflow run timeline',
+    },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
   },
@@ -2552,6 +2595,140 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error }, 'get_run_summary_failed');
       return apiError(c, 500, 'Failed to get run summary');
+    }
+  });
+
+  // GET /api/workflows/runs/:runId/events - Paginated events listing
+  registerOpenApiRoute(getWorkflowRunEventsRoute, async c => {
+    try {
+      const runId = c.req.param('runId') ?? '';
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) {
+        return apiError(c, 404, 'Workflow run not found');
+      }
+
+      const queryResult = workflowEventsQuerySchema.safeParse({
+        limit: c.req.query('limit'),
+        offset: c.req.query('offset'),
+        event_type: c.req.query('event_type'),
+      });
+      if (!queryResult.success) {
+        return apiError(
+          c,
+          400,
+          `Invalid query parameters: ${queryResult.error.issues.map(i => i.message).join(', ')}`
+        );
+      }
+      const { limit, offset, event_type: eventType } = queryResult.data;
+
+      const [events, total] = await Promise.all([
+        workflowEventDb.listWorkflowEventsPaginated(runId, limit, offset, eventType),
+        workflowEventDb.countWorkflowEvents(runId, eventType),
+      ]);
+
+      return c.json({ events, total, limit, offset });
+    } catch (error) {
+      getLog().error({ err: error }, 'get_workflow_run_events_failed');
+      return apiError(c, 500, 'Failed to get workflow run events');
+    }
+  });
+
+  // GET /api/workflows/runs/:runId/timeline - Computed timeline view
+  registerOpenApiRoute(getWorkflowRunTimelineRoute, async c => {
+    try {
+      const runId = c.req.param('runId') ?? '';
+      const run = await workflowDb.getWorkflowRun(runId);
+      if (!run) {
+        return apiError(c, 404, 'Workflow run not found');
+      }
+
+      // Cap event loading to prevent unbounded memory usage on long-running workflows
+      const MAX_TIMELINE_EVENTS = 10_000;
+      const events = await workflowEventDb.listWorkflowEventsPaginated(
+        runId,
+        MAX_TIMELINE_EVENTS,
+        0
+      );
+
+      // Build timeline from raw events
+      type TimelineEntry = z.infer<typeof timelineEntrySchema>;
+      const timeline: TimelineEntry[] = [];
+      const nodeStartTimes = new Map<string, string>();
+
+      for (const evt of events) {
+        const nodeId = evt.step_name;
+
+        if (
+          evt.event_type === 'workflow_started' ||
+          evt.event_type === 'workflow_completed' ||
+          evt.event_type === 'workflow_failed' ||
+          evt.event_type === 'workflow_cancelled'
+        ) {
+          timeline.push({
+            timestamp: evt.created_at,
+            node_id: null,
+            event: evt.event_type,
+            duration_ms: null,
+            details: evt.data,
+          });
+          continue;
+        }
+
+        if (evt.event_type === 'node_started' && nodeId) {
+          nodeStartTimes.set(nodeId, evt.created_at);
+          timeline.push({
+            timestamp: evt.created_at,
+            node_id: nodeId,
+            event: evt.event_type,
+            duration_ms: null,
+            details: evt.data,
+          });
+          continue;
+        }
+
+        if ((evt.event_type === 'node_completed' || evt.event_type === 'node_failed') && nodeId) {
+          const startTime = nodeStartTimes.get(nodeId);
+          const durationMs = startTime
+            ? new Date(evt.created_at).getTime() - new Date(startTime).getTime()
+            : null;
+          timeline.push({
+            timestamp: evt.created_at,
+            node_id: nodeId,
+            event: evt.event_type,
+            duration_ms: durationMs,
+            details: evt.data,
+          });
+          continue;
+        }
+
+        // All other events (gate_started, gate_completed, gate_failed, step_*, etc.)
+        timeline.push({
+          timestamp: evt.created_at,
+          node_id: nodeId,
+          event: evt.event_type,
+          duration_ms: null,
+          details: evt.data,
+        });
+      }
+
+      // Compute total duration from first to last event
+      let totalDurationMs: number | null = null;
+      if (events.length >= 2) {
+        const first = new Date(events[0].created_at).getTime();
+        const last = new Date(events[events.length - 1].created_at).getTime();
+        totalDurationMs = last - first;
+      }
+
+      return c.json({
+        run_id: runId,
+        workflow_name: run.workflow_name,
+        status: run.status,
+        timeline,
+        total_duration_ms: totalDurationMs,
+      });
+    } catch (error) {
+      getLog().error({ err: error }, 'get_workflow_run_timeline_failed');
+      return apiError(c, 500, 'Failed to get workflow run timeline');
     }
   });
 
