@@ -90,6 +90,14 @@ export function getArchonWorktreesPath(): string {
 }
 
 /**
+ * Get the sessions directory for file-based session persistence.
+ * Returns: ~/.archon/sessions/ (or ARCHON_HOME/sessions/)
+ */
+export function getArchonSessionsPath(): string {
+  return join(getArchonHome(), 'sessions');
+}
+
+/**
  * Get the global config file path
  */
 export function getArchonConfigPath(): string {
