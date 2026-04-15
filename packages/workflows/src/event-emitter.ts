@@ -8,9 +8,11 @@
  * - Singleton pattern via getWorkflowEventEmitter()
  * - Fire-and-forget: listener errors never propagate to the executor
  * - Conversation-scoped subscriptions via registerRun() mapping
+ * - Canonical SSE emission via emitSse() for the new typed event taxonomy
  */
 import { EventEmitter } from 'events';
 import type { ArtifactType } from './schemas';
+import type { SseEventType, SseScope, SseEventMap, SseEvent } from './sse-event-types';
 import { createLogger } from '@archon/paths';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
@@ -21,7 +23,7 @@ function getLog(): ReturnType<typeof createLogger> {
 }
 
 // ---------------------------------------------------------------------------
-// Event types
+// Event types (legacy)
 // ---------------------------------------------------------------------------
 
 interface WorkflowStartedEvent {
@@ -160,16 +162,25 @@ export type WorkflowEmitterEvent =
   | WorkflowCancelledEvent;
 
 // ---------------------------------------------------------------------------
+// Re-export canonical SSE types for consumers
+// ---------------------------------------------------------------------------
+
+export type { SseEventType, SseScope, SseEventMap, SseEvent } from './sse-event-types';
+
+// ---------------------------------------------------------------------------
 // Emitter class
 // ---------------------------------------------------------------------------
 
 type Listener = (event: WorkflowEmitterEvent) => void;
+type SseCallback = (event: SseEvent) => void;
 
 const WORKFLOW_EVENT = 'workflow_event';
+const SSE_EVENT = 'sse_event';
 
 class WorkflowEventEmitter {
   private emitter = new EventEmitter();
   private conversationMap = new Map<string, string>(); // runId -> conversationId
+  private sseCallback: SseCallback | null = null;
 
   constructor() {
     // Allow many subscribers (adapters, DB persistence, tests, etc.)
@@ -198,7 +209,8 @@ class WorkflowEventEmitter {
   }
 
   /**
-   * Emit a workflow event. Fire-and-forget: listener errors are caught and logged.
+   * Emit a legacy workflow event. Fire-and-forget: listener errors are caught and logged.
+   * Existing callers continue to work during incremental migration.
    */
   emit(event: WorkflowEmitterEvent): void {
     try {
@@ -209,7 +221,49 @@ class WorkflowEventEmitter {
   }
 
   /**
-   * Subscribe to all workflow events. Returns an unsubscribe function.
+   * Emit a canonical SSE event using the new typed taxonomy.
+   *
+   * Creates a full SseEvent envelope and:
+   * 1. Emits to the internal EventEmitter for type-specific listeners
+   * 2. Calls the registered SSE callback (wired to SseBroker.publish by the server)
+   *
+   * TypeScript rejects unknown type literals at compile time.
+   */
+  emitSse<E extends SseEventType>(type: E, scope: SseScope, payload: SseEventMap[E]): void {
+    const event: SseEvent = {
+      id: '', // Will be filled by the server's createSseEvent factory
+      type,
+      ts: new Date().toISOString(),
+      scope,
+      payload,
+    };
+
+    try {
+      this.emitter.emit(SSE_EVENT, event);
+    } catch (error) {
+      getLog().error({ err: error as Error, eventType: type }, 'sse_event_emit_failed');
+    }
+
+    // Forward to the registered callback (wired to SseBroker.publish by the server)
+    if (this.sseCallback) {
+      try {
+        this.sseCallback(event);
+      } catch (error) {
+        getLog().error({ err: error as Error, eventType: type }, 'sse_callback_error');
+      }
+    }
+  }
+
+  /**
+   * Register a callback for canonical SSE events. The server wires this to
+   * SseBroker.publish() so events flow through the broker to SSE subscribers.
+   */
+  setSseCallback(cb: SseCallback): void {
+    this.sseCallback = cb;
+  }
+
+  /**
+   * Subscribe to all legacy workflow events. Returns an unsubscribe function.
    */
   subscribe(listener: Listener): () => void {
     // Wrap listener to catch errors - listener failures must not propagate
@@ -224,6 +278,48 @@ class WorkflowEventEmitter {
     this.emitter.on(WORKFLOW_EVENT, safeListener);
     return (): void => {
       this.emitter.removeListener(WORKFLOW_EVENT, safeListener);
+    };
+  }
+
+  /**
+   * Subscribe to canonical SSE events by type. Returns an unsubscribe function.
+   * The handler receives the full SseEvent envelope.
+   */
+  onSse<E extends SseEventType>(
+    type: E,
+    handler: (event: SseEvent & { type: E }) => void
+  ): () => void {
+    const safeHandler = (event: SseEvent): void => {
+      if (event.type === type) {
+        try {
+          handler(event as SseEvent & { type: E });
+        } catch (error) {
+          getLog().error({ err: error as Error, eventType: type }, 'sse_listener_error');
+        }
+      }
+    };
+
+    this.emitter.on(SSE_EVENT, safeHandler);
+    return (): void => {
+      this.emitter.removeListener(SSE_EVENT, safeHandler);
+    };
+  }
+
+  /**
+   * Subscribe to all canonical SSE events. Returns an unsubscribe function.
+   */
+  subscribeSse(handler: SseCallback): () => void {
+    const safeHandler = (event: SseEvent): void => {
+      try {
+        handler(event);
+      } catch (error) {
+        getLog().error({ err: error as Error, eventType: event.type }, 'sse_listener_error');
+      }
+    };
+
+    this.emitter.on(SSE_EVENT, safeHandler);
+    return (): void => {
+      this.emitter.removeListener(SSE_EVENT, safeHandler);
     };
   }
 

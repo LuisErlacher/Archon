@@ -162,7 +162,7 @@ export function registerSSERoutes(app: {
   // GET /api/stream/workflow-runs/:runId — per-run events
   app.get('/api/stream/workflow-runs/:runId', async c => {
     setSSEHeaders(c);
-    const runId = c.req.param('runId');
+    const runId = c.req.param('runId') ?? '';
     const scope: SseScope = { kind: 'workflowRun', runId };
     return handleScopedSSE(c, scope);
   });
@@ -170,7 +170,7 @@ export function registerSSERoutes(app: {
   // GET /api/stream/codebases/:codebaseId — per-codebase events
   app.get('/api/stream/codebases/:codebaseId', async c => {
     setSSEHeaders(c);
-    const codebaseId = c.req.param('codebaseId');
+    const codebaseId = c.req.param('codebaseId') ?? '';
     const scope: SseScope = { kind: 'codebase', codebaseId };
     return handleScopedSSE(c, scope);
   });
