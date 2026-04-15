@@ -78,6 +78,9 @@ function getSessionStore(): PiAiSessionStore {
   return sessionStore;
 }
 
+/** In-memory session storage for persistSession=false mode */
+const memorySessions = new Map<string, AgentMessage[]>();
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_TOOL_OUTPUT = 50_000;
@@ -552,8 +555,12 @@ export class PiAiProvider implements IAgentProvider {
       throw enriched;
     }
 
+    const useFileStore = options?.persistSession !== false;
+
     const previousMessages = resumeSessionId
-      ? ((await getSessionStore().load(resumeSessionId)) ?? [])
+      ? useFileStore
+        ? ((await getSessionStore().load(resumeSessionId)) ?? [])
+        : (memorySessions.get(resumeSessionId) ?? [])
       : [];
 
     // ── Tool filtering (from nodeConfig) ────────────────────────────────────
@@ -621,7 +628,8 @@ export class PiAiProvider implements IAgentProvider {
           thinkingLevel,
           beforeToolCall,
           afterToolCall,
-          options
+          options,
+          useFileStore
         );
         return;
       } catch (error) {
@@ -678,7 +686,8 @@ export class PiAiProvider implements IAgentProvider {
           signal?: AbortSignal
         ) => Promise<AfterToolCallResult | undefined>)
       | undefined,
-    requestOptions?: SendQueryOptions
+    requestOptions?: SendQueryOptions,
+    useFileStore?: boolean
   ): AsyncGenerator<MessageChunk> {
     const agent = new Agent({
       initialState: {
@@ -756,7 +765,11 @@ export class PiAiProvider implements IAgentProvider {
           clearTimeout(globalTimeout);
           if (idleTimer) clearTimeout(idleTimer);
           const newSessionId = randomUUID();
-          await getSessionStore().save(newSessionId, event.messages);
+          if (useFileStore !== false) {
+            await getSessionStore().save(newSessionId, event.messages);
+          } else {
+            memorySessions.set(newSessionId, event.messages);
+          }
           queue.push({ type: 'result', sessionId: newSessionId });
           queue.end();
           break;
