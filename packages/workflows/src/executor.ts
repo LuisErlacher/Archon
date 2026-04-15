@@ -614,6 +614,20 @@ export async function executeWorkflow(
     // Register run with emitter and emit workflow_started
     const emitter = getWorkflowEventEmitter();
     emitter.registerRun(workflowRun.id, conversationId);
+    if (codebaseId) {
+      emitter.registerCodebase(workflowRun.id, codebaseId);
+    }
+
+    // Emit canonical workflow.run.queued event
+    emitter.emitSse(
+      'workflow.run.queued',
+      { kind: 'workflowRun', runId: workflowRun.id },
+      {
+        runId: workflowRun.id,
+        workflowName: workflow.name,
+        codebaseId,
+      }
+    );
 
     emitter.emit({
       type: 'workflow_started',

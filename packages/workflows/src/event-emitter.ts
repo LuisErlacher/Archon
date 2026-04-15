@@ -9,6 +9,9 @@
  * - Fire-and-forget: listener errors never propagate to the executor
  * - Conversation-scoped subscriptions via registerRun() mapping
  * - Canonical SSE emission via emitSse() for the new typed event taxonomy
+ * - Automatic legacy→canonical mapping: every legacy emit() also produces
+ *   a canonical SSE event so the new broker receives events without modifying
+ *   call sites in the executor/dag-executor.
  */
 import { EventEmitter } from 'events';
 import type { ArtifactType } from './schemas';
@@ -168,6 +171,192 @@ export type WorkflowEmitterEvent =
 export type { SseEventType, SseScope, SseEventMap, SseEvent } from './sse-event-types';
 
 // ---------------------------------------------------------------------------
+// Legacy → Canonical event mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a legacy WorkflowEmitterEvent to a canonical SSE event.
+ * Returns null for events that have no canonical mapping (e.g., tool_started, tool_completed).
+ */
+function mapLegacyToCanonical(
+  event: WorkflowEmitterEvent,
+  codebaseId: string | undefined
+): { type: SseEventType; scope: SseScope; payload: unknown } | null {
+  const scope: SseScope = {
+    kind: 'workflowRun',
+    runId: event.runId,
+  };
+
+  switch (event.type) {
+    case 'workflow_started':
+      return {
+        type: 'workflow.run.started',
+        scope,
+        payload: {
+          runId: event.runId,
+          workflowName: event.workflowName,
+          conversationId: event.conversationId,
+          codebaseId,
+        },
+      };
+
+    case 'workflow_completed':
+      return {
+        type: 'workflow.run.completed',
+        scope,
+        payload: {
+          runId: event.runId,
+          workflowName: event.workflowName,
+          duration: event.duration,
+          codebaseId,
+        },
+      };
+
+    case 'workflow_failed':
+      return {
+        type: 'workflow.run.failed',
+        scope,
+        payload: {
+          runId: event.runId,
+          workflowName: event.workflowName,
+          error: event.error,
+          codebaseId,
+        },
+      };
+
+    case 'workflow_cancelled':
+      return {
+        type: 'workflow.run.cancelled',
+        scope,
+        payload: {
+          runId: event.runId,
+          reason: event.reason,
+          nodeId: event.nodeId,
+          codebaseId,
+        },
+      };
+
+    case 'node_started':
+      return {
+        type: 'node.started',
+        scope,
+        payload: {
+          runId: event.runId,
+          nodeId: event.nodeId,
+          nodeName: event.nodeName,
+          codebaseId,
+        },
+      };
+
+    case 'node_completed':
+      return {
+        type: 'node.completed',
+        scope,
+        payload: {
+          runId: event.runId,
+          nodeId: event.nodeId,
+          nodeName: event.nodeName,
+          duration: event.duration,
+          costUsd: event.costUsd,
+          stopReason: event.stopReason,
+          numTurns: event.numTurns,
+          codebaseId,
+        },
+      };
+
+    case 'node_failed':
+      return {
+        type: 'node.failed',
+        scope,
+        payload: {
+          runId: event.runId,
+          nodeId: event.nodeId,
+          nodeName: event.nodeName,
+          error: event.error,
+          codebaseId,
+        },
+      };
+
+    case 'node_skipped':
+      // Node skipped maps to node.completed with a skip indicator
+      // For now, emit as node.failed with the skip reason so the UI can show it
+      return null; // No canonical mapping for skipped — handled by the UI
+
+    case 'approval_pending':
+      return {
+        type: 'workflow.run.paused',
+        scope,
+        payload: {
+          runId: event.runId,
+          nodeId: event.nodeId,
+          message: event.message,
+          codebaseId,
+        },
+      };
+
+    case 'loop_iteration_started':
+      // Loop iterations are internal; map to node.started if nodeId present
+      if (event.nodeId) {
+        return {
+          type: 'node.started',
+          scope,
+          payload: {
+            runId: event.runId,
+            nodeId: event.nodeId,
+            nodeName: `iteration-${String(event.iteration)}`,
+            codebaseId,
+          },
+        };
+      }
+      return null;
+
+    case 'loop_iteration_completed':
+      if (event.nodeId) {
+        return {
+          type: 'node.completed',
+          scope,
+          payload: {
+            runId: event.runId,
+            nodeId: event.nodeId,
+            nodeName: `iteration-${String(event.iteration)}`,
+            duration: event.duration,
+            codebaseId,
+          },
+        };
+      }
+      return null;
+
+    case 'loop_iteration_failed':
+      if (event.nodeId) {
+        return {
+          type: 'node.failed',
+          scope,
+          payload: {
+            runId: event.runId,
+            nodeId: event.nodeId,
+            nodeName: `iteration-${String(event.iteration)}`,
+            error: event.error,
+            codebaseId,
+          },
+        };
+      }
+      return null;
+
+    case 'workflow_artifact':
+      // Artifacts are metadata; no direct canonical event type
+      return null;
+
+    case 'tool_started':
+    case 'tool_completed':
+      // Tool activity is too granular for the canonical event taxonomy
+      return null;
+
+    default:
+      return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Emitter class
 // ---------------------------------------------------------------------------
 
@@ -180,6 +369,7 @@ const SSE_EVENT = 'sse_event';
 class WorkflowEventEmitter {
   private emitter = new EventEmitter();
   private conversationMap = new Map<string, string>(); // runId -> conversationId
+  private codebaseMap = new Map<string, string>(); // runId -> codebaseId
   private sseCallback: SseCallback | null = null;
 
   constructor() {
@@ -195,10 +385,18 @@ class WorkflowEventEmitter {
   }
 
   /**
+   * Register a run-to-codebase mapping for canonical SSE scope resolution.
+   */
+  registerCodebase(runId: string, codebaseId: string): void {
+    this.codebaseMap.set(runId, codebaseId);
+  }
+
+  /**
    * Remove the run-to-conversation mapping (called at workflow end).
    */
   unregisterRun(runId: string): void {
     this.conversationMap.delete(runId);
+    this.codebaseMap.delete(runId);
   }
 
   /**
@@ -209,14 +407,29 @@ class WorkflowEventEmitter {
   }
 
   /**
+   * Get the codebase ID for a given run.
+   */
+  getCodebaseId(runId: string): string | undefined {
+    return this.codebaseMap.get(runId);
+  }
+
+  /**
    * Emit a legacy workflow event. Fire-and-forget: listener errors are caught and logged.
    * Existing callers continue to work during incremental migration.
+   * Also automatically maps and emits a canonical SSE event.
    */
   emit(event: WorkflowEmitterEvent): void {
     try {
       this.emitter.emit(WORKFLOW_EVENT, event);
     } catch (error) {
       getLog().error({ err: error as Error, eventType: event.type }, 'event_emit_failed');
+    }
+
+    // Auto-map legacy event to canonical SSE event
+    const codebaseId = this.codebaseMap.get(event.runId);
+    const mapped = mapLegacyToCanonical(event, codebaseId);
+    if (mapped) {
+      this.emitSse(mapped.type, mapped.scope, mapped.payload as SseEventMap[typeof mapped.type]);
     }
   }
 
