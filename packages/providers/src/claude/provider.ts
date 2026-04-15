@@ -889,14 +889,14 @@ export class ClaudeProvider implements IAgentProvider {
     const subprocessEnv = buildSubprocessEnv();
     const env = requestOptions?.env ? { ...subprocessEnv, ...requestOptions.env } : subprocessEnv;
 
-    // Apply nodeConfig translation once (deterministic, not retry-dependent)
-    // We need a throwaway Options to extract warnings from applyNodeConfig,
-    // then re-apply per attempt. But nodeConfig warnings are deterministic,
-    // so we compute them once and yield them before the first attempt.
+    // Apply nodeConfig translation once (deterministic, not retry-dependent).
+    // Save the pre-computed options to avoid re-reading MCP config per retry attempt.
     let nodeConfigWarnings: ProviderWarning[] = [];
+    let nodeConfigSnapshot: Options | null = null;
     if (requestOptions?.nodeConfig) {
       const tempOptions: Options = {} as Options;
       nodeConfigWarnings = await applyNodeConfig(tempOptions, requestOptions.nodeConfig, cwd);
+      nodeConfigSnapshot = tempOptions;
     }
 
     // Yield provider warnings once before retries
@@ -914,88 +914,107 @@ export class ClaudeProvider implements IAgentProvider {
       requestOptions.abortSignal.addEventListener('abort', onAbort, { once: true });
     }
 
-    for (let attempt = 0; attempt <= MAX_SUBPROCESS_RETRIES; attempt++) {
-      if (requestOptions?.abortSignal?.aborted) {
-        throw new Error('Query aborted');
-      }
-
-      const stderrLines: string[] = [];
-      const toolResultQueue: ToolResultEntry[] = [];
-      const controller = new AbortController();
-      currentController = controller;
-
-      // 1. Build SDK options (env and cliPath pre-computed above)
-      const options = buildBaseClaudeOptions(
-        cwd,
-        requestOptions,
-        assistantDefaults,
-        controller,
-        stderrLines,
-        toolResultQueue,
-        env,
-        resolvedCliPath
-      );
-
-      // 2. Apply nodeConfig translation (re-applied per attempt since options are fresh)
-      if (requestOptions?.nodeConfig) {
-        await applyNodeConfig(options, requestOptions.nodeConfig, cwd);
-      }
-
-      // 3. Set session resume
-      if (resumeSessionId) {
-        options.resume = resumeSessionId;
-        getLog().debug(
-          { sessionId: resumeSessionId, forkSession: requestOptions?.forkSession },
-          'resuming_session'
-        );
-      } else {
-        getLog().debug({ cwd, attempt }, 'starting_new_session');
-      }
-
-      try {
-        // 4. Run query with first-event timeout protection
-        const rawEvents = query({ prompt, options });
-        const timeoutMs = getFirstEventTimeoutMs();
-        const diagnostics = buildFirstEventHangDiagnostics(
-          options.env as Record<string, string>,
-          options.model
-        );
-        const events = withFirstMessageTimeout(rawEvents, controller, timeoutMs, diagnostics);
-
-        // 5. Stream normalized events
-        yield* streamClaudeMessages(events, toolResultQueue);
-        return;
-      } catch (error) {
-        const err = error as Error;
-        const { enrichedError, errorClass, shouldRetry } = classifyAndEnrichError(
-          err,
-          stderrLines,
-          controller
-        );
-
-        getLog().error(
-          {
-            err,
-            stderrContext: stderrLines.join('\n'),
-            errorClass,
-            attempt,
-            maxRetries: MAX_SUBPROCESS_RETRIES,
-          },
-          'query_error'
-        );
-
-        if (!shouldRetry || attempt >= MAX_SUBPROCESS_RETRIES) {
-          throw enrichedError;
+    try {
+      for (let attempt = 0; attempt <= MAX_SUBPROCESS_RETRIES; attempt++) {
+        if (requestOptions?.abortSignal?.aborted) {
+          throw new Error('Query aborted');
         }
 
-        const delayMs = this.retryBaseDelayMs * Math.pow(2, attempt);
-        getLog().info({ attempt, delayMs, errorClass }, 'retrying_subprocess');
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        lastError = enrichedError;
+        const stderrLines: string[] = [];
+        const toolResultQueue: ToolResultEntry[] = [];
+        const controller = new AbortController();
+        currentController = controller;
+
+        // 1. Build SDK options (env and cliPath pre-computed above)
+        const options = buildBaseClaudeOptions(
+          cwd,
+          requestOptions,
+          assistantDefaults,
+          controller,
+          stderrLines,
+          toolResultQueue,
+          env,
+          resolvedCliPath
+        );
+
+        // 2. Apply nodeConfig translation (re-use pre-computed snapshot, no MCP re-read)
+        if (nodeConfigSnapshot) {
+          for (const [key, value] of Object.entries(nodeConfigSnapshot)) {
+            if (value !== undefined) {
+              if (key === 'hooks') {
+                // Merge pre-computed hooks with base hooks from buildBaseClaudeOptions
+                const base = options.hooks as Record<string, unknown> | undefined;
+                const src = value as Record<string, unknown>;
+                (options as Record<string, unknown>)[key] = base ? { ...base, ...src } : src;
+              } else {
+                (options as Record<string, unknown>)[key] = value;
+              }
+            }
+          }
+        }
+
+        // 3. Set session resume
+        if (resumeSessionId) {
+          options.resume = resumeSessionId;
+          getLog().debug(
+            { sessionId: resumeSessionId, forkSession: requestOptions?.forkSession },
+            'resuming_session'
+          );
+        } else {
+          getLog().debug({ cwd, attempt }, 'starting_new_session');
+        }
+
+        try {
+          // 4. Run query with first-event timeout protection
+          const rawEvents = query({ prompt, options });
+          const timeoutMs = getFirstEventTimeoutMs();
+          const diagnostics = buildFirstEventHangDiagnostics(
+            options.env as Record<string, string>,
+            options.model
+          );
+          const events = withFirstMessageTimeout(rawEvents, controller, timeoutMs, diagnostics);
+
+          // 5. Stream normalized events
+          yield* streamClaudeMessages(events, toolResultQueue);
+          return;
+        } catch (error) {
+          const err = error as Error;
+          const { enrichedError, errorClass, shouldRetry } = classifyAndEnrichError(
+            err,
+            stderrLines,
+            controller
+          );
+
+          getLog().error(
+            {
+              err,
+              stderrContext: stderrLines.join('\n'),
+              errorClass,
+              attempt,
+              maxRetries: MAX_SUBPROCESS_RETRIES,
+            },
+            'query_error'
+          );
+
+          if (!shouldRetry || attempt >= MAX_SUBPROCESS_RETRIES) {
+            throw enrichedError;
+          }
+
+          const delayMs = this.retryBaseDelayMs * Math.pow(2, attempt);
+          getLog().info({ attempt, delayMs, errorClass }, 'retrying_subprocess');
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          lastError = enrichedError;
+        }
+      }
+
+      throw lastError ?? new Error('Claude Code query failed after retries');
+    } finally {
+      // Clean up the abort listener to prevent memory leak when the external
+      // AbortController outlives this query (common in DAG nodes)
+      if (requestOptions?.abortSignal) {
+        requestOptions.abortSignal.removeEventListener('abort', onAbort);
       }
     }
-
-    throw lastError ?? new Error('Claude Code query failed after retries');
   }
 
   getType(): string {

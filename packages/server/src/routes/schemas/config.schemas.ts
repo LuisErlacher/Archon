@@ -9,7 +9,10 @@ const providerDefaultsSchema = z.record(z.string(), z.unknown()).openapi('Provid
 export const safeConfigSchema = z
   .object({
     botName: z.string(),
-    assistant: z.string().min(1),
+    assistant: z
+      .string()
+      .min(1)
+      .describe('Active assistant provider ID. Valid values are returned by GET /api/providers.'),
     assistants: z.record(z.string(), providerDefaultsSchema),
     streaming: z.object({
       telegram: z.enum(['stream', 'batch']),
@@ -29,7 +32,13 @@ export const safeConfigSchema = z
 /** Body for PATCH /api/config/assistants — all fields optional (partial update). */
 export const updateAssistantConfigBodySchema = z
   .object({
-    assistant: z.string().min(1).optional(),
+    assistant: z
+      .string()
+      .min(1)
+      .describe(
+        'Assistant provider ID to set as active. Valid values are returned by GET /api/providers.'
+      )
+      .optional(),
     assistants: z.record(z.string(), providerDefaultsSchema).optional(),
   })
   .openapi('UpdateAssistantConfigBody');

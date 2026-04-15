@@ -104,6 +104,8 @@ class SseBrokerImpl implements SseBroker {
         s.delete(handler);
         if (s.size === 0) {
           this.subscribers.delete(key);
+          // No remaining subscribers — free the ring buffer for this scope
+          this.buffers.delete(key);
         }
       }
     };
