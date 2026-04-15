@@ -1,0 +1,21 @@
+name: archon-bmad-create-story
+description: |
+  BMAD story creation phase. Creates a well-scoped user story with acceptance criteria,
+  scope bounds, and testable requirements. Uses skill preloading for story conventions.
+
+  Use when: User wants to create a BMAD user story from a specification or feature idea.
+  NOT for: Implementation (use archon-bmad-dev-story), code review (use archon-bmad-code-review).
+nodes:
+  - id: write-story
+    prompt: |
+      Read the specification and create a user story.
+      Write the story to $ARTIFACTS_DIR/story.md with acceptance criteria and scope bounds.
+    skills: [bmad-story-writing]
+  - id: validate-scope
+    depends_on: [write-story]
+    bash: |
+      STORY="$ARTIFACTS_DIR/story.md"
+      if [ ! -f "$STORY" ]; then echo "story.md not found"; exit 1; fi
+      if ! grep -qi "acceptance criteria" "$STORY"; then echo "Missing acceptance criteria"; exit 1; fi
+      if ! grep -qi "scope" "$STORY"; then echo "Missing scope bounds"; exit 1; fi
+      echo "Story validated successfully"

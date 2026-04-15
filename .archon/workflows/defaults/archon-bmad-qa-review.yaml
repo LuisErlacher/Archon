@@ -1,0 +1,23 @@
+name: archon-bmad-qa-review
+description: |
+  BMAD QA review phase. Runs real tests and parses coverage.
+  Uses bash gate nodes for deterministic quality checks.
+
+  Use when: User wants QA verification of an implementation with real test execution.
+  NOT for: Code review (use archon-bmad-code-review), full cycle (use archon-bmad-full-cycle).
+nodes:
+  - id: write-qa-tests
+    prompt: |
+      Read $ARTIFACTS_DIR/story.md and write comprehensive QA tests for all acceptance criteria.
+  - id: gate-tests-pass
+    depends_on: [write-qa-tests]
+    bash: bun run test 2>&1; exit $?
+  - id: gate-coverage
+    depends_on: [write-qa-tests]
+    bash: |
+      bun run test --coverage 2>&1 | grep -oE '[0-9]+%' | head -1 | grep -qE '^[89][0-9]%|100%' || exit 1
+      echo "Coverage gate passed"
+  - id: qa-report
+    depends_on: [gate-tests-pass, gate-coverage]
+    prompt: |
+      Write a QA report to $ARTIFACTS_DIR/qa-report.md summarizing test results and coverage.

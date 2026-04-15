@@ -1,0 +1,26 @@
+name: archon-bmad-code-review
+description: |
+  BMAD adversarial code review phase. Uses codex provider override for an adversarial
+  second opinion. Writes review to $ARTIFACTS_DIR/review.md.
+
+  Use when: User wants an adversarial code review of implementation changes.
+  NOT for: Implementation (use archon-bmad-dev-story), QA review (use archon-bmad-qa-review).
+provider: claude
+nodes:
+  - id: review-code
+    prompt: |
+      Perform an adversarial code review of the changes in the current branch.
+      Focus on security, performance, and correctness issues.
+      Write the review to $ARTIFACTS_DIR/review.md.
+    provider: codex
+  - id: summarize-review
+    depends_on: [review-code]
+    prompt: |
+      Read $ARTIFACTS_DIR/review.md and create an actionable summary with priorities.
+      Write to $ARTIFACTS_DIR/review-summary.md.
+  - id: validate-review
+    depends_on: [summarize-review]
+    bash: |
+      if [ ! -f "$ARTIFACTS_DIR/review.md" ]; then echo "review.md missing"; exit 1; fi
+      if [ ! -f "$ARTIFACTS_DIR/review-summary.md" ]; then echo "review-summary.md missing"; exit 1; fi
+      echo "Review artifacts validated"

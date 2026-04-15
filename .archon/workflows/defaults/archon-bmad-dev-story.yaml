@@ -1,0 +1,36 @@
+name: archon-bmad-dev-story
+description: |
+  BMAD development phase. Implements a story with deterministic test, lint, and typecheck
+  gate nodes. Uses bash nodes for gates and loop pattern for auto-retry on failures.
+
+  Use when: User wants to implement a BMAD story with quality gates.
+  NOT for: Story creation (use archon-bmad-create-story), code review (use archon-bmad-code-review).
+provider: claude
+nodes:
+  - id: implement
+    prompt: |
+      Read the story from $ARTIFACTS_DIR/story.md and implement all acceptance criteria.
+      Write all code changes following the acceptance criteria.
+  - id: gate-test
+    depends_on: [implement]
+    bash: bun run test 2>&1; exit $?
+  - id: gate-lint
+    depends_on: [implement]
+    bash: bun run lint 2>&1; exit $?
+  - id: gate-typecheck
+    depends_on: [implement]
+    bash: bun run type-check 2>&1; exit $?
+  - id: fix-and-retry
+    depends_on: [gate-test, gate-lint, gate-typecheck]
+    trigger_rule: one_success
+    loop:
+      prompt: |
+        Some gates failed. Read $ARTIFACTS_DIR/story.md and fix the issues found by the gate checks.
+      until: ALL_GATES_PASSED
+      max_iterations: 5
+      until_bash: |
+        bun run test 2>&1 && bun run lint 2>&1 && bun run type-check 2>&1
+  - id: commit-results
+    depends_on: [fix-and-retry]
+    prompt: |
+      All gates passed. Write a summary to $ARTIFACTS_DIR/impl-summary.md.
