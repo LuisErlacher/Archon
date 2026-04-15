@@ -215,6 +215,43 @@ export class SqliteAdapter implements IDatabase {
     } catch (e: unknown) {
       getLog().warn({ err: e as Error }, 'db.sqlite_migration_session_columns_failed');
     }
+    // Usage events table (for databases created before this feature)
+    try {
+      const usageTableExists = this.db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='remote_agent_usage_events'"
+        )
+        .get();
+      if (!usageTableExists) {
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS remote_agent_usage_events (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            workflow_run_id TEXT NOT NULL REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+            node_id TEXT,
+            codebase_id TEXT REFERENCES remote_agent_codebases(id) ON DELETE SET NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+            cost_usd REAL NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+          );
+        `);
+        this.db.run(
+          'CREATE INDEX IF NOT EXISTS idx_usage_run ON remote_agent_usage_events(workflow_run_id)'
+        );
+        this.db.run(
+          'CREATE INDEX IF NOT EXISTS idx_usage_created ON remote_agent_usage_events(created_at DESC)'
+        );
+        this.db.run(
+          'CREATE INDEX IF NOT EXISTS idx_usage_codebase_day ON remote_agent_usage_events(codebase_id, date(created_at))'
+        );
+      }
+    } catch (e: unknown) {
+      getLog().warn({ err: e as Error }, 'db.sqlite_migration_usage_events_failed');
+    }
   }
 
   /**
@@ -332,7 +369,24 @@ export class SqliteAdapter implements IDatabase {
         event_type TEXT NOT NULL,
         step_index INTEGER,
         step_name TEXT,
+        actor TEXT NOT NULL DEFAULT 'system',
         data TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      -- Usage events table (token usage and cost tracking)
+      CREATE TABLE IF NOT EXISTS remote_agent_usage_events (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        workflow_run_id TEXT NOT NULL REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+        node_id TEXT,
+        codebase_id TEXT REFERENCES remote_agent_codebases(id) ON DELETE SET NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
       );
 
@@ -375,6 +429,10 @@ export class SqliteAdapter implements IDatabase {
         ON remote_agent_sessions(parent_session_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_conversation_started
         ON remote_agent_sessions(conversation_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_usage_run ON remote_agent_usage_events(workflow_run_id);
+      CREATE INDEX IF NOT EXISTS idx_usage_created ON remote_agent_usage_events(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_usage_codebase_day ON remote_agent_usage_events(codebase_id, date(created_at));
+
     `);
     getLog().info('db.sqlite_schema_initialized');
   }
