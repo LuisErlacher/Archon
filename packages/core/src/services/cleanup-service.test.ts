@@ -87,6 +87,14 @@ mock.module('../db/sessions', () => ({
   deleteOldSessions: mockDeleteOldSessions,
 }));
 
+// Mock @archon/providers - PiAiSessionStore
+const mockCleanup = mock(() => Promise.resolve(0));
+mock.module('@archon/providers', () => ({
+  PiAiSessionStore: mock(() => ({
+    cleanup: mockCleanup,
+  })),
+}));
+
 // Mock codebases DB
 const mockGetCodebase = mock(() => Promise.resolve(null));
 mock.module('../db/codebases', () => ({
@@ -103,6 +111,7 @@ import {
   cleanupStaleWorktrees,
   removeEnvironment,
   onConversationClosed,
+  cleanupStalePiAiSessions,
   SESSION_RETENTION_DAYS,
 } from './cleanup-service';
 
@@ -457,6 +466,7 @@ describe('runScheduledCleanup', () => {
     mockGetById.mockClear();
     mockGetCodebase.mockClear();
     mockDeleteOldSessions.mockClear();
+    mockCleanup.mockClear();
     // Reset defaults
     mockHasUncommittedChanges.mockResolvedValue(false);
     mockWorktreeExists.mockResolvedValue(false);
@@ -751,6 +761,29 @@ describe('runScheduledCleanup', () => {
     expect(report.errors).toContainEqual({
       id: 'session-cleanup',
       error: 'database locked',
+    });
+  });
+  test('cleans up stale pi-ai session files during scheduled cleanup', async () => {
+    mockListAllActiveWithCodebase.mockResolvedValueOnce([]);
+    mockDeleteOldSessions.mockResolvedValueOnce(0);
+    mockCleanup.mockResolvedValueOnce(3);
+
+    const report = await runScheduledCleanup();
+
+    expect(mockCleanup).toHaveBeenCalledWith(7);
+    expect(report.sessionsDeleted).toBe(3);
+  });
+
+  test('reports error when pi-ai session cleanup fails', async () => {
+    mockListAllActiveWithCodebase.mockResolvedValueOnce([]);
+    mockDeleteOldSessions.mockResolvedValueOnce(0);
+    mockCleanup.mockRejectedValueOnce(new Error('disk full'));
+
+    const report = await runScheduledCleanup();
+
+    expect(report.errors).toContainEqual({
+      id: 'pi-ai-session-cleanup',
+      error: 'disk full',
     });
   });
 });

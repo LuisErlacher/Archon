@@ -22,6 +22,7 @@ import {
 } from '@archon/git';
 import type { RepoPath, BranchName } from '@archon/git';
 import { createLogger } from '@archon/paths';
+import { PiAiSessionStore } from '@archon/providers';
 import type { IsolationEnvironmentRow } from '@archon/isolation';
 import { ConversationNotFoundError } from '../types';
 
@@ -385,9 +386,20 @@ export async function runScheduledCleanup(): Promise<CleanupReport> {
     report.errors.push({ id: 'scheduler', error: err.message });
   }
 
+  // Clean up stale pi-ai session files (default 7 days)
+  try {
+    const piAiRetentionDays = parseInt(process.env.PI_AI_SESSION_RETENTION_DAYS ?? '7', 10);
+    const piAiDeleted = await cleanupStalePiAiSessions(piAiRetentionDays);
+    report.sessionsDeleted += piAiDeleted;
+  } catch (error) {
+    const err = error as Error;
+    getLog().error({ err: error }, 'pi_ai_session_cleanup_failed');
+    report.errors.push({ id: 'pi-ai-session-cleanup', error: err.message });
+  }
+
   // Clean up old inactive sessions
   try {
-    report.sessionsDeleted = await sessionDb.deleteOldSessions(SESSION_RETENTION_DAYS);
+    report.sessionsDeleted += await sessionDb.deleteOldSessions(SESSION_RETENTION_DAYS);
   } catch (error) {
     const err = error as Error;
     getLog().error({ err: error }, 'session_cleanup_failed');
@@ -649,6 +661,16 @@ export async function cleanupMergedWorktrees(
   }
 
   return result;
+}
+
+/**
+ * Clean up stale pi-ai session files older than the specified number of days.
+ * Returns the number of deleted sessions.
+ * @throws when session cleanup fails (caller handles error reporting)
+ */
+export async function cleanupStalePiAiSessions(retentionDays: number): Promise<number> {
+  const store = new PiAiSessionStore();
+  return await store.cleanup(retentionDays);
 }
 
 /**
