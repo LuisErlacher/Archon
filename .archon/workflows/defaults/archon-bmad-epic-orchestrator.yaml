@@ -1,0 +1,31 @@
+name: archon-bmad-epic-orchestrator
+description: |
+  BMAD epic orchestrator. Sequences stories within an epic by reading
+  an epic manifest from $ARTIFACTS_DIR/epic.json and iterating over stories.
+
+  Use when: User wants to process multiple stories in a BMAD epic sequentially.
+  NOT for: Single-story workflows (use archon-bmad-full-cycle).
+provider: claude
+interactive: true
+nodes:
+  - id: init-epic
+    prompt: |
+      Read the epic manifest from $ARTIFACTS_DIR/epic.json.
+      Initialize progress tracking in $ARTIFACTS_DIR/epic-progress.json.
+  - id: process-stories
+    depends_on: [init-epic]
+    loop:
+      prompt: |
+        Read $ARTIFACTS_DIR/epic.json to get the next story.
+        Process the story through the full BMAD development cycle.
+        Update $ARTIFACTS_DIR/epic-progress.json with the result.
+      until: ALL_STORIES_COMPLETE
+      max_iterations: 20
+      fresh_context: true
+      until_bash: |
+        grep -q '"status":"complete"' "$ARTIFACTS_DIR/epic-progress.json" 2>/dev/null
+  - id: epic-summary
+    depends_on: [process-stories]
+    prompt: |
+      Read all story results from $ARTIFACTS_DIR/ and create an epic summary.
+      Write to $ARTIFACTS_DIR/epic-summary.md.
