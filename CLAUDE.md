@@ -527,6 +527,13 @@ assistants:
     additionalDirectories:
       - /absolute/path/to/other/repo
     codexBinaryPath: /usr/local/bin/codex  # Optional: custom Codex CLI binary path
+  pi-ai:
+    provider: zai          # LLM backend: anthropic, openai, google, mistral, groq, xai, zai
+    model: glm-5.1         # Model ID passed to the pi-ai provider
+    thinkingLevel: medium  # Reasoning effort: low, medium, high
+
+# Top-level default assistant (optional, overrides per-codebase preference):
+# assistant: pi-ai
 
 # docs:
 #   path: docs  # Optional: default is docs/
@@ -541,6 +548,8 @@ assistants:
 - Workflows are validated at load time for provider/model compatibility
 - Claude models: `sonnet`, `opus`, `haiku`, `claude-*`, `inherit`
 - Codex models: Any model except Claude-specific aliases
+- pi-ai models: Any model string supported by the configured pi-ai provider
+- pi-ai provider options: anthropic, openai, google, mistral, groq, xai, zai
 - Invalid combinations fail workflow loading with clear error messages
 
 ### Running the App in Worktrees

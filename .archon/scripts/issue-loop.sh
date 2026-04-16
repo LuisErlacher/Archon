@@ -11,7 +11,8 @@
 #   .archon/loop-state/conflicts.log   — PR created but merge to dev had conflicts
 #   .archon/loop-state/loop.log        — full chronological log
 
-set -uo pipefail
+set -euo pipefail
+trap 'log "FATAL: Script failed at line $LINENO (exit code $?)"; exit 1' ERR
 
 REPO="LuisErlacher/Archon"
 WORKFLOW="archon-idea-to-pr-pi"
@@ -83,17 +84,17 @@ while true; do
     continue
   fi
   log "Issue #$issue: PR #$pr found, marking ready"
-  gh pr ready "$pr" -R "$REPO" >> "$LOOP_LOG" 2>&1 || true
+  gh pr ready "$pr" -R "$REPO" >> "$LOOP_LOG" 2>&1 || log "WARNING: Failed to mark PR #$pr as ready"
 
   # Wait briefly so CI can register
   sleep 5
 
-  # Attempt merge to dev (squash, delete branch). --auto requires CI; we use direct merge.
+  # Attempt merge to dev (merge commit, delete branch). --auto requires CI; we use direct merge.
   log "Issue #$issue: attempting merge of PR #$pr → $BASE_BRANCH"
   if gh pr merge "$pr" -R "$REPO" --merge --delete-branch >> "$LOOP_LOG" 2>&1; then
     log "Issue #$issue: PR #$pr merged into $BASE_BRANCH"
     echo "$issue PR-$pr" >> "$DONE_LOG"
-    gh issue close "$issue" -R "$REPO" -c "Closed by automated PR #$pr (merged into $BASE_BRANCH)" >> "$LOOP_LOG" 2>&1 || true
+    gh issue close "$issue" -R "$REPO" -c "Closed by automated PR #$pr (merged into $BASE_BRANCH)" >> "$LOOP_LOG" 2>&1 || log "WARNING: Failed to close issue #$issue"
   else
     log "Issue #$issue: merge of PR #$pr FAILED — likely conflict, marked for human review"
     echo "$issue PR-$pr conflict" >> "$CONFLICTS_LOG"

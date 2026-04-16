@@ -14,7 +14,8 @@
 #   .archon/loop-state/spec-conflict.log — PR created but merge failed
 #   .archon/loop-state/spec-loop.log     — full chronological log
 
-set -uo pipefail
+set -euo pipefail
+trap 'log "FATAL: Script failed at line $LINENO (exit code $?)"; exit 1' ERR
 
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -42,6 +43,12 @@ if [[ ! -s "$QUEUE" ]]; then
   log "Initializing queue with all specs/003-024"
   ls specs/00[3-9]*.md specs/01*.md specs/02*.md 2>/dev/null | sort > "$QUEUE"
   log "Queue: $(wc -l < "$QUEUE") specs"
+fi
+
+# Warn if queue is still empty after initialization
+if [[ ! -s "$QUEUE" ]]; then
+  log "WARNING: Queue is empty — no specs found. Exiting."
+  exit 0
 fi
 
 log "=== OVERNIGHT SPEC LOOP STARTED (PID $$) ==="
