@@ -9,6 +9,23 @@ argument-hint: (no arguments - reads from workflow artifacts)
 
 ---
 
+## CRITICAL: PATH RULES
+
+**You are running inside a working directory set by the workflow executor.**
+**NEVER use `cd` with an absolute path. NEVER hardcode project paths.**
+
+```
+RULE 1: All bash commands MUST use relative paths (no `cd /c/Users/...`)
+RULE 2: Use `pwd` to confirm your current directory — that IS your working directory
+RULE 3: All file operations (read, write, edit, grep, ls) use paths RELATIVE to pwd
+RULE 4: If a path from a previous step looks absolute, convert it to relative first
+```
+
+**Why:** The executor may place you in a git worktree (isolated copy of the repo).
+Using absolute paths to the main repo will edit the WRONG files.
+
+---
+
 ## Your Mission
 
 Execute each task from the plan, validating after every change.

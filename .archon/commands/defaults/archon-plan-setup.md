@@ -92,17 +92,48 @@ Examples:
 
 ---
 
+## CRITICAL: PATH RULES
+
+**You are running inside a working directory set by the workflow executor.**
+**NEVER use `cd` with an absolute path. NEVER hardcode project paths.**
+
+```
+RULE 1: All bash commands MUST use relative paths (no `cd /c/Users/...`)
+RULE 2: Use `pwd` to confirm your current directory — that IS your working directory
+RULE 3: All file operations (read, write, edit, grep, ls) use paths RELATIVE to pwd
+RULE 4: If a path from a previous step looks absolute, convert it to relative first
+```
+
+**Why:** The executor may place you in a git worktree (isolated copy of the repo).
+Using absolute paths to the main repo will edit the WRONG files.
+
+---
+
 ## Phase 2: PREPARE - Git State
 
-### 2.1 Check Current State
+### 2.1 Detect Environment
+
+**Run these commands FIRST to determine if you are in a worktree:**
 
 ```bash
+pwd
 git branch --show-current
+git rev-parse --show-toplevel
+```
+
+**How to detect a worktree:**
+- If `pwd` contains `.archon/workspaces/` or `worktrees/` → you ARE in a worktree
+- If `git rev-parse --show-toplevel` shows a different path than the main repo → worktree
+- If `cat .git` shows a path like `gitdir: /path/to/main/.git/worktrees/...` → worktree
+
+### 2.2 Check Current State
+
+```bash
 git status --porcelain
 git remote get-url origin
 ```
 
-### 2.2 Determine Repository Info
+### 2.3 Determine Repository Info
 
 Extract owner/repo from the remote URL for PR creation:
 
@@ -110,17 +141,30 @@ Extract owner/repo from the remote URL for PR creation:
 gh repo view --json nameWithOwner -q .nameWithOwner
 ```
 
-### 2.3 Branch Decision
+### 2.4 Branch Decision
 
-| Current State | Action |
-|---------------|--------|
-| Already on correct feature branch | Use it, log "Using existing branch: {name}" |
-| On base branch, clean working directory | Create and checkout: `git checkout -b {branch-name}` |
-| On base branch, dirty working directory | STOP with error: "Uncommitted changes on base branch. Stash or commit first." |
-| On different feature branch | STOP with error: "On branch {X}, expected {Y}. Switch branches or adjust plan." |
-| In a worktree | Use the worktree's branch, log "Using worktree branch: {name}" |
+Evaluate in order (first matching case wins):
 
-### 2.4 Sync with Remote
+```text
+┌─ IN WORKTREE?  (detected in step 2.1)
+│  └─ YES → Use current branch AS-IS. Do NOT switch branches. Do NOT create
+│           new branches. The isolation system has already set up the correct
+│           branch; any deviation operates on the wrong code.
+│           Log: "Using worktree branch: {name}"
+│
+├─ ON $BASE_BRANCH? (main, master, or configured base branch)
+│  └─ Q: Working directory clean?
+│     ├─ YES → Create and checkout: `git checkout -b {branch-name}`
+│     │        (only applies outside a worktree — e.g., manual CLI usage)
+│     └─ NO  → STOP: "Uncommitted changes on $BASE_BRANCH. Stash or commit first."
+│
+└─ ON OTHER BRANCH?
+   └─ Q: Does it match the expected branch for this plan?
+      ├─ YES → Use it, log "Using existing branch: {name}"
+      └─ NO  → STOP: "On branch {X}, expected {Y}. Switch branches or adjust plan."
+```
+
+### 2.5 Sync with Remote
 
 ```bash
 git fetch origin
@@ -129,7 +173,7 @@ git rebase origin/$BASE_BRANCH || git merge origin/$BASE_BRANCH
 
 If conflicts occur, STOP with error: "Merge conflicts with $BASE_BRANCH. Resolve manually."
 
-### 2.5 Push Branch (if commits exist)
+### 2.6 Push Branch (if commits exist)
 
 If there are commits on the branch:
 ```bash

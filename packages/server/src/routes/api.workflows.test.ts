@@ -117,6 +117,10 @@ mock.module('@archon/core/db/codebases', () => ({
   listCodebases: mockListCodebases,
 }));
 
+// Ensure auth middleware does not activate during tests (WEB_UI_PASSWORD may be set in the
+// shell environment when running inside the Archon Docker/dev setup).
+delete process.env.WEB_UI_PASSWORD;
+
 import { registerApiRoutes } from './api';
 
 describe('GET /api/workflows', () => {

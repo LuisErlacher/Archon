@@ -181,6 +181,10 @@ mock.module('@archon/core/utils/commands', () => ({
 }));
 
 // Import the module under test AFTER all mock.module() calls
+// Ensure auth middleware does not activate during tests (WEB_UI_PASSWORD may be set in the
+// shell environment).
+delete process.env.WEB_UI_PASSWORD;
+
 import { registerApiRoutes } from './api';
 
 // ---------------------------------------------------------------------------

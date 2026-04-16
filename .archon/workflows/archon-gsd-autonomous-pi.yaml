@@ -1,4 +1,4 @@
-name: archon-gsd-autonomous
+name: archon-gsd-autonomous-pi
 description: |
   Use when: You want to autonomously execute multiple features from the ROADMAP.md.
   Triggers: "gsd autonomous", "execute roadmap", "autonomous development", "run roadmap",
@@ -14,7 +14,8 @@ description: |
 
   NOT for: Single features (use archon-gsd-feature), PRD extraction (use archon-prd-to-roadmap).
 
-provider: claude
+provider: pi-ai
+model: glm-5.1
 
 nodes:
   # ═══════════════════════════════════════════════════════════════
@@ -80,7 +81,7 @@ nodes:
       - Total estimated effort
     depends_on: [read-roadmap]
     context: fresh
-    denied_tools: [Write, Edit]
+    # pi-ai adjustment: GLM-5.1 needs explicit Write to create batch-research.md
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 3: PLAN — Create unified plan for the batch
@@ -262,7 +263,7 @@ nodes:
       Be ruthless — find at least 3 issues.
     depends_on: [fix]
     context: fresh
-    denied_tools: [Write, Edit]
+    # pi-ai adjustment: GLM-5.1 needs Write to create review.md artifact
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 9: FIX REVIEW — CRITICAL/HIGH only

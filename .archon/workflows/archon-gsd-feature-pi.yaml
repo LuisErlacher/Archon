@@ -43,7 +43,8 @@ nodes:
       - Risks and mitigation strategies
       - Recommended implementation approach
     context: fresh
-    denied_tools: [Write, Edit]
+    allowed_tools: [Read, Write, Grep, Glob, Bash]
+    # pi-ai adjustment: GLM-5.1 needs explicit Write to create research.md artifact
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 2: PLAN — Create detailed implementation plan
@@ -95,7 +96,7 @@ nodes:
       ```
     depends_on: [research]
     context: fresh
-    allowed_tools: [Read]
+    allowed_tools: [Read, Write]  # pi-ai adjustment: Claude could write via inline; GLM needs explicit Write tool
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 3: PLAN-CHECK — Revision loop with stall detection
@@ -164,7 +165,7 @@ nodes:
         When all tasks complete: <promise>COMPLETE</promise>
       until: COMPLETE
       max_iterations: 20
-      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+      until_bash: "bun run type-check 2>&1"
     depends_on: [plan-check]
     context: fresh
     hooks:
@@ -284,7 +285,8 @@ nodes:
       Be ruthless. Find at least 3 issues. If you find none, look harder.
     depends_on: [fix-validation]
     context: fresh
-    denied_tools: [Write, Edit]
+    allowed_tools: [Read, Write, Grep, Glob, Bash]
+    # pi-ai adjustment: review needs Write to create review.md, but should not edit source
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 8: FIX REVIEW — Address CRITICAL/HIGH only

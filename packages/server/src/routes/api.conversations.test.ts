@@ -102,6 +102,10 @@ mock.module('@archon/core/db/users', () => ({
   })),
 }));
 
+// Ensure auth middleware does not activate during tests (WEB_UI_PASSWORD may be set in the
+// shell environment).
+delete process.env.WEB_UI_PASSWORD;
+
 import { registerApiRoutes } from './api';
 
 const MOCK_CONV = {
