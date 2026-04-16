@@ -43,7 +43,8 @@ nodes:
       - Risks and mitigation strategies
       - Recommended implementation approach
     context: fresh
-    denied_tools: [Write, Edit]
+    # pi-ai adjustment: Claude bypasses write restriction via inline output;
+    # GLM-5.1 needs explicit Write to create research.md artifact
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 2: PLAN — Create detailed implementation plan
@@ -95,7 +96,7 @@ nodes:
       ```
     depends_on: [research]
     context: fresh
-    allowed_tools: [Read]
+    allowed_tools: [Read, Write]  # pi-ai adjustment: Claude could write via inline; GLM needs explicit Write tool
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 3: PLAN-CHECK — Revision loop with stall detection
@@ -284,7 +285,7 @@ nodes:
       Be ruthless. Find at least 3 issues. If you find none, look harder.
     depends_on: [fix-validation]
     context: fresh
-    denied_tools: [Write, Edit]
+    # pi-ai adjustment: removed denied_tools — review needs Write to create review.md
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 8: FIX REVIEW — Address CRITICAL/HIGH only

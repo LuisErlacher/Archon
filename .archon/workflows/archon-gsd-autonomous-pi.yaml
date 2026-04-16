@@ -1,0 +1,358 @@
+name: archon-gsd-autonomous-pi
+description: |
+  Use when: You want to autonomously execute multiple features from the ROADMAP.md.
+  Triggers: "gsd autonomous", "execute roadmap", "autonomous development", "run roadmap",
+            "develop all features", "autonomous mode".
+  Input: Which batch(es) to execute from docs/ROADMAP.md, or "next" for the next incomplete batch.
+  Output: One PR per batch, all quality gates passed.
+
+  Orchestrator workflow that:
+  1. Reads ROADMAP.md to find the next incomplete batch
+  2. For each feature in the batch, runs the full GSD pipeline
+  3. Creates a consolidated PR per batch
+  4. Updates ROADMAP.md with completion status
+
+  NOT for: Single features (use archon-gsd-feature), PRD extraction (use archon-prd-to-roadmap).
+
+provider: pi-ai
+model: glm-5.1
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: READ ROADMAP — Find next batch to execute
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: read-roadmap
+    prompt: |
+      You are a roadmap navigator. Find the next batch of features to implement.
+
+      ## Instructions
+
+      1. Read `docs/ROADMAP.md`
+      2. Find the first batch where NOT ALL features are checked (completed)
+      3. If user specified a batch number in their message, use that instead
+      4. List the uncompleted features (unchecked items) in that batch
+
+      ## User Input
+      $ARGUMENTS
+
+      ## Output
+
+      Report:
+      - Batch number and name
+      - Total features in batch
+      - Already completed (checked)
+      - Remaining to implement (unchecked) — list each with FR number and description
+      - Dependencies: what must be done first
+
+      If ALL batches are complete, say "ROADMAP COMPLETE — all batches implemented."
+    context: fresh
+    allowed_tools: [Read]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: RESEARCH — Understand the batch scope
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: batch-research
+    prompt: |
+      You are researching how to implement a batch of features from the roadmap.
+
+      ## Batch to Implement
+      $read-roadmap.output
+
+      ## Instructions
+
+      1. Read `CLAUDE.md` for codebase architecture
+      2. Read `docs/PRD.md` for the full feature specifications
+      3. For each feature in this batch:
+         - Find the relevant FR section in the PRD
+         - Explore existing code that relates to this feature
+         - Identify files that need to be created or modified
+         - Check if there are GitHub issues linked to this feature
+      4. Identify shared dependencies between features in the batch
+      5. Determine implementation order (which features enable others)
+
+      ## Output
+
+      Write to `$ARTIFACTS_DIR/batch-research.md`:
+      - Implementation order (dependency-aware)
+      - For each feature: files to touch, approach, risks
+      - Shared infrastructure needed (new types, DB tables, API routes)
+      - Total estimated effort
+    depends_on: [read-roadmap]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: PLAN — Create unified plan for the batch
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: batch-plan
+    prompt: |
+      Create an implementation plan for the entire batch.
+
+      ## Research
+      $batch-research.output
+
+      ## Planning Rules
+
+      - Order tasks by dependency (shared infra first, then features)
+      - Each task must specify: files, action, verify command, acceptance criteria
+      - Group related changes together (e.g., DB migration + API route + frontend)
+      - Max 25 tasks total — if more needed, the batch is too big
+      - Every task has a verify command (type-check, test, curl, etc.)
+
+      ## Output
+
+      Write to `$ARTIFACTS_DIR/batch-plan.md`:
+      ```
+      # Batch Plan: [Batch Name]
+
+      ## Shared Infrastructure
+      ### Task 1: [title]
+      Files: ...
+      Action: ...
+      Verify: `bun run type-check`
+      AC: ...
+
+      ## Feature: FR01 - [name]
+      ### Task 2: [title]
+      ...
+
+      ## Feature: FR02 - [name]
+      ### Task 3: [title]
+      ...
+      ```
+    depends_on: [batch-research]
+    context: fresh
+    allowed_tools: [Read]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 4: PLAN CHECK — Revision loop
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: plan-check
+    loop:
+      prompt: |
+        Review the batch plan for quality and completeness.
+
+        Read `$ARTIFACTS_DIR/batch-plan.md` and check:
+        1. Does every task have a verify command?
+        2. Are dependencies ordered correctly?
+        3. Do all features from the batch have tasks?
+        4. Are acceptance criteria concrete (not vague)?
+        5. Does it follow CLAUDE.md conventions?
+
+        If issues found: fix them in the plan file.
+        If plan is solid: <promise>COMPLETE</promise>
+      until: COMPLETE
+      max_iterations: 3
+    depends_on: [batch-plan]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 5: EXECUTE — Implement all tasks
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: execute
+    loop:
+      prompt: |
+        Implement the batch plan task by task.
+
+        ## Plan
+        Read `$ARTIFACTS_DIR/batch-plan.md`
+
+        ## Rules
+
+        - Follow the plan EXACTLY
+        - After each file edit, run the task's verify command
+        - Commit each completed task: "feat: [task description]"
+        - Track progress in `$ARTIFACTS_DIR/progress.md`
+        - If a task fails after 3 attempts, skip it and note in progress
+        - When ALL tasks complete (or skipped): <promise>COMPLETE</promise>
+
+        ## Progress Format
+        ```
+        - [x] Task 1: [title] — commit: abc123
+        - [x] Task 2: [title] — commit: def456
+        - [ ] Task 3: [title] — SKIPPED: [reason]
+        - [ ] Task 4: [title] — IN PROGRESS
+        ```
+      until: COMPLETE
+      max_iterations: 30
+      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+    depends_on: [plan-check]
+    context: fresh
+    hooks:
+      PostToolUse:
+        - matcher: "Write|Edit"
+          response:
+            systemMessage: >
+              File modified. Run type-check NOW: `bun run type-check`
+              Fix errors before proceeding.
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 6: VALIDATE — Full quality gate suite
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: validate
+    bash: |
+      echo "=== TYPE CHECK ==="
+      bun run type-check 2>&1
+      TC=$?
+
+      echo ""
+      echo "=== LINT ==="
+      bun run lint 2>&1
+      LT=$?
+
+      echo ""
+      echo "=== FORMAT ==="
+      bun run format:check 2>&1
+      FM=$?
+
+      echo ""
+      echo "=== TESTS ==="
+      bun run test 2>&1
+      TS=$?
+
+      echo ""
+      echo "=== GATE RESULTS ==="
+      echo "Type check: $([ $TC -eq 0 ] && echo PASS || echo FAIL)"
+      echo "Lint: $([ $LT -eq 0 ] && echo PASS || echo FAIL)"
+      echo "Format: $([ $FM -eq 0 ] && echo PASS || echo FAIL)"
+      echo "Tests: $([ $TS -eq 0 ] && echo PASS || echo FAIL)"
+
+      [ $TC -eq 0 ] && [ $LT -eq 0 ] && [ $FM -eq 0 ] && [ $TS -eq 0 ] && echo "VALIDATION: ALL_PASS" || echo "VALIDATION: HAS_FAILURES"
+    depends_on: [execute]
+    timeout: 300000
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 7: FIX — Address validation failures
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fix
+    prompt: |
+      Fix validation failures.
+
+      ## Results
+      $validate.output
+
+      ## Rules
+      - If "VALIDATION: ALL_PASS" → say "All gates passed" and stop
+      - Fix type errors → lint (`bun run lint:fix`) → format (`bun run format`) → tests
+      - After all fixes: `bun run validate`
+      - Only fix what's broken, no improvements
+    depends_on: [validate]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 8: REVIEW — Adversarial code review
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: review
+    prompt: |
+      Adversarial code review of all batch changes.
+
+      1. Run `git diff $BASE_BRANCH...HEAD --stat` to see scope
+      2. Run `git diff $BASE_BRANCH...HEAD` for full diff
+      3. Review for: bugs, security, type safety, convention violations, missing tests
+      4. Rate: CRITICAL / HIGH / LOW
+
+      Write to `$ARTIFACTS_DIR/review.md` with findings and verdict.
+      Be ruthless — find at least 3 issues.
+    depends_on: [fix]
+    context: fresh
+    denied_tools: [Write, Edit]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 9: FIX REVIEW — CRITICAL/HIGH only
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fix-review
+    prompt: |
+      Fix CRITICAL and HIGH findings from code review.
+
+      ## Review
+      $review.output
+
+      - Fix CRITICAL + HIGH only (ignore LOW)
+      - Run `bun run validate` after fixes
+      - Commit: "fix: address code review findings"
+    depends_on: [review]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 10: UPDATE ROADMAP — Mark batch as done
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: update-roadmap
+    prompt: |
+      Update the roadmap to reflect completed work.
+
+      ## Batch Info
+      $read-roadmap.output
+
+      ## Progress
+      Read `$ARTIFACTS_DIR/progress.md`
+
+      ## Instructions
+
+      1. Read `docs/ROADMAP.md`
+      2. For each completed feature (checked in progress.md), mark it as done in ROADMAP.md:
+         - Change `- [ ]` to `- [x]`
+      3. For skipped features, add a note: `- [ ] FR01: ... — SKIPPED: [reason]`
+      4. Save the updated ROADMAP.md
+    depends_on: [fix-review]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 11: SHIP — Create PR
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: ship
+    prompt: |
+      Create a PR for the completed batch.
+
+      ## Context
+      - Batch: $read-roadmap.output
+      - Progress: Read `$ARTIFACTS_DIR/progress.md`
+      - Review: $review.output
+
+      ## Instructions
+
+      1. Stage all changes, commit if needed
+      2. Push: `git push -u origin HEAD`
+      3. Create PR:
+
+      ```
+      ## Batch: [Batch Name]
+
+      ### Features Implemented
+      [List from progress.md — completed features with FR numbers]
+
+      ### Quality Gates
+      - [x] Type check
+      - [x] Lint
+      - [x] Format
+      - [x] Tests
+      - [x] Code review (CRITICAL/HIGH addressed)
+
+      ### PRD Reference
+      [FR numbers implemented, referencing docs/PRD.md]
+
+      ### Skipped (if any)
+      [Features that couldn't be completed, with reasons]
+      ```
+
+      4. Save PR URL to `$ARTIFACTS_DIR/.pr-url`
+    depends_on: [update-roadmap]
+    context: fresh
+    hooks:
+      PreToolUse:
+        - matcher: "Write|Edit"
+          response:
+            hookSpecificOutput:
+              hookEventName: PreToolUse
+              permissionDecision: deny
+              permissionDecisionReason: "Ship node — source files locked. Git and gh commands only."
