@@ -4,8 +4,11 @@ worktree:
 docs:
   path: packages/docs-web/src/content/docs
 
+# Default AI assistant provider
+assistant: pi-ai
+
 assistants:
-  pi:
+  pi-ai:
     provider: zai
     model: glm-5.1
     thinkingLevel: medium

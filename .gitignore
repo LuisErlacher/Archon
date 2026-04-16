@@ -105,3 +105,5 @@ packages/server/.env
 skills-lock.json
 test-results/
 .archon/ralph/
+.archon/loop-state/
+.archon/workflows/tmp-*
