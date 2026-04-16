@@ -88,7 +88,7 @@ while true; do
   # Wait briefly so CI can register
   sleep 5
 
-  # Attempt merge to dev (squash, delete branch). --auto requires CI; we use direct merge.
+  # Attempt merge to dev (merge commit, delete branch). --auto requires CI; we use direct merge.
   log "Issue #$issue: attempting merge of PR #$pr → $BASE_BRANCH"
   if gh pr merge "$pr" -R "$REPO" --merge --delete-branch >> "$LOOP_LOG" 2>&1; then
     log "Issue #$issue: PR #$pr merged into $BASE_BRANCH"

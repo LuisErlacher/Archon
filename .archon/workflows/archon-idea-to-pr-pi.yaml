@@ -1,7 +1,7 @@
 name: archon-idea-to-pr-pi
 description: |
   Pi-AI (GLM-5.1) variant of the full idea-to-pr pipeline.
-  Same 8-phase, 16-node pipeline as archon-idea-to-pr but runs on pi-ai with GLM-5.1.
+  9-phase, 17-node pipeline (pi-ai variant of archon-idea-to-pr with 5-agent review).
   Uses inline prompts instead of command files for provider independence.
   Triggers: "pi idea to pr", "glm idea", "glm feature full", "pi full pipeline".
   Input: Feature description, spec path, or GitHub issue number.
@@ -177,7 +177,7 @@ nodes:
         When all tasks complete: <promise>COMPLETE</promise>
       until: COMPLETE
       max_iterations: 20
-      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+      until_bash: "bun run type-check 2>&1"
     depends_on: [confirm-plan]
     context: fresh
     hooks:

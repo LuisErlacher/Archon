@@ -81,7 +81,7 @@ nodes:
       - Total estimated effort
     depends_on: [read-roadmap]
     context: fresh
-    denied_tools: [Write, Edit]
+    # pi-ai adjustment: GLM-5.1 needs explicit Write to create batch-research.md
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 3: PLAN — Create unified plan for the batch
@@ -180,7 +180,7 @@ nodes:
         ```
       until: COMPLETE
       max_iterations: 30
-      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+      until_bash: "bun run type-check 2>&1"
     depends_on: [plan-check]
     context: fresh
     hooks:
@@ -263,7 +263,7 @@ nodes:
       Be ruthless — find at least 3 issues.
     depends_on: [fix]
     context: fresh
-    denied_tools: [Write, Edit]
+    # pi-ai adjustment: GLM-5.1 needs Write to create review.md artifact
 
   # ═══════════════════════════════════════════════════════════════
   # PHASE 9: FIX REVIEW — CRITICAL/HIGH only

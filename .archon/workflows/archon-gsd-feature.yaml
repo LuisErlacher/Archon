@@ -176,7 +176,7 @@ nodes:
         When all tasks complete: <promise>COMPLETE</promise>
       until: COMPLETE
       max_iterations: 20
-      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+      until_bash: "bun run type-check 2>&1"
     depends_on: [plan-check]
     context: fresh
     hooks:

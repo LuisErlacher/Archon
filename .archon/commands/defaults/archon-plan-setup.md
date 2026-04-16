@@ -164,7 +164,7 @@ Evaluate in order (first matching case wins):
       └─ NO  → STOP: "On branch {X}, expected {Y}. Switch branches or adjust plan."
 ```
 
-### 2.4 Sync with Remote
+### 2.5 Sync with Remote
 
 ```bash
 git fetch origin
@@ -173,7 +173,7 @@ git rebase origin/$BASE_BRANCH || git merge origin/$BASE_BRANCH
 
 If conflicts occur, STOP with error: "Merge conflicts with $BASE_BRANCH. Resolve manually."
 
-### 2.5 Push Branch (if commits exist)
+### 2.6 Push Branch (if commits exist)
 
 If there are commits on the branch:
 ```bash

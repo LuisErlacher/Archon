@@ -179,7 +179,7 @@ nodes:
         ```
       until: COMPLETE
       max_iterations: 30
-      until_bash: "bun run type-check 2>&1; echo EXIT:$?"
+      until_bash: "bun run type-check 2>&1"
     depends_on: [plan-check]
     context: fresh
     hooks:
