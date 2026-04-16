@@ -1,4 +1,4 @@
-import { describe, test, expect, mock } from 'bun:test';
+import { describe, test, expect, mock, beforeAll, afterAll } from 'bun:test';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import type { ConversationLockManager } from '@archon/core';
 import type { WebAdapter } from '../adapters/web';
@@ -7,6 +7,21 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { validationErrorHook } from './openapi-defaults';
 import { makeTestWorkflow, makeTestWorkflowWithSource } from '@archon/workflows/test-utils';
+
+// Preserve and clear WEB_UI_PASSWORD to prevent auth middleware race conditions
+// when tests run in parallel with api.auth.test.ts (which sets this env var).
+let _savedWebUiPassword: string | undefined;
+beforeAll(() => {
+  _savedWebUiPassword = process.env.WEB_UI_PASSWORD;
+  delete process.env.WEB_UI_PASSWORD;
+});
+afterAll(() => {
+  if (_savedWebUiPassword !== undefined) {
+    process.env.WEB_UI_PASSWORD = _savedWebUiPassword;
+  } else {
+    delete process.env.WEB_UI_PASSWORD;
+  }
+});
 
 /** Test app factory: includes defaultHook to format validation errors as { error: string }. */
 function createTestApp(): OpenAPIHono {
