@@ -1,3 +1,6 @@
+// Prevent auto-loaded ~/.archon/.env from enabling WEB_UI_PASSWORD auth in tests
+delete process.env.WEB_UI_PASSWORD;
+
 import { describe, test, expect, mock } from 'bun:test';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import type { ConversationLockManager } from '@archon/core';

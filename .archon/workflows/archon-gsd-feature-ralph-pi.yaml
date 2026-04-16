@@ -1,0 +1,552 @@
+name: archon-gsd-feature-ralph-pi
+description: |
+  Ralph-style variant of archon-gsd-feature-pi. All nodes on pi-ai/glm-5.1.
+
+  Flow:
+  1. research      → understands spec
+  2. plan          → writes plan.md + tasks.json (test tasks + impl tasks)
+  3. generate-tests → LOOP fresh — ≤10 test tasks per iteration, commit, exit
+  4. implement     → LOOP fresh — ≤10 impl tasks per iteration, commit, exit
+  5. validate      → BASH — type-check + full test suite; writes validation.json
+  6. fix-tests     → LOOP fresh — fixes failing tests, runs type-check + test (until_bash gate)
+  7. review        → writes review.json with CRITICAL/HIGH/LOW findings
+  8. fix-review    → LOOP fresh — fixes CRITICAL/HIGH, re-runs tests (until_bash gate)
+  9. ship          → creates PR
+
+  Each loop iteration is a FRESH GLM-5.1 session (context: fresh) so context never
+  blows up. Max 10 tasks per session keeps each session small and fast. Loop engine
+  restarts automatically until the until_bash gate passes.
+
+  Triggers: "ralph pi", "gsd ralph", "spec ralph".
+  Input: Feature description, spec file content, or FR numbers.
+
+provider: pi-ai
+model: glm-5.1
+
+nodes:
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 1: RESEARCH — Understand the spec
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: research
+    loop:
+      fresh_context: true
+      prompt: |
+        You are a senior engineer researching how to implement a feature.
+
+        This is a fresh session. You must recreate your context from files and the user request.
+
+        ## Spec / Feature Request
+        $ARGUMENTS
+
+        ## Instructions
+
+        1. Read `CLAUDE.md` for architecture and conventions.
+        2. Read `docs/PRD.md` if it exists to locate the feature in the product vision.
+        3. Explore the codebase to identify existing files, patterns, and reusable code.
+        4. Identify risks, unknowns, and blockers.
+        5. Use the `write` tool to create or overwrite `$ARTIFACTS_DIR/research.md`.
+
+        `research.md` must contain:
+        - What already exists
+        - What must be created
+        - Testability strategy
+        - Risks and mitigations
+        - Recommended approach
+
+        If `research.md` exists and is non-empty after your work, output exactly `<promise>RESEARCH_READY</promise>` as the final line.
+      until: RESEARCH_READY
+      max_iterations: 3
+      until_bash: |
+        bun -e "const fs=require('fs'); const p=process.argv[1]; if (!fs.existsSync(p)) process.exit(1); const text=fs.readFileSync(p,'utf8').trim(); process.exit(text.length>0?0:1)" "$ARTIFACTS_DIR/research.md"
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 2: PLAN — Break work into test tasks + impl tasks
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: plan
+    loop:
+      fresh_context: true
+      prompt: |
+        You are creating an implementation plan AND a machine-readable task list.
+
+        This is a fresh session. Read the artifacts from disk before doing any work.
+
+        ## Inputs
+
+        1. Read `$ARTIFACTS_DIR/research.md`
+        2. Read the feature request below
+
+        ## Feature Request
+        $ARGUMENTS
+
+        ## Planning Rules
+
+        - Split work into TWO kinds of tasks:
+          - `test` — writes test files first
+          - `impl` — implements production code
+        - Every impl task must depend on at least one relevant test task
+        - Each task must be concrete, verifiable, and small enough for one iteration
+        - Keep total tasks <= 40
+        - Follow CLAUDE.md conventions
+
+        ## Required Output Files
+
+        1. Create or overwrite `$ARTIFACTS_DIR/plan.md`
+        2. Create or overwrite `$ARTIFACTS_DIR/tasks.json`
+
+        `tasks.json` must be valid JSON with this shape:
+        {
+          "feature": "short-kebab-name",
+          "tasks": [
+            {
+              "id": "T-001",
+              "kind": "test",
+              "title": "...",
+              "files": ["path/to/file"],
+              "dependsOn": [],
+              "status": "pending",
+              "batch": 0,
+              "commit": ""
+            }
+          ]
+        }
+
+        If both files exist, `plan.md` is non-empty, and `tasks.json` parses with at least one task, output exactly `<promise>PLAN_READY</promise>` as the final line.
+      until: PLAN_READY
+      max_iterations: 3
+      until_bash: |
+        bun -e "const fs=require('fs'); const plan=process.argv[1]; const tasks=process.argv[2]; if (!fs.existsSync(plan)||!fs.existsSync(tasks)) process.exit(1); const planText=fs.readFileSync(plan,'utf8').trim(); if (!planText) process.exit(1); const data=JSON.parse(fs.readFileSync(tasks,'utf8')); process.exit(Array.isArray(data.tasks)&&data.tasks.length>0?0:1)" "$ARTIFACTS_DIR/plan.md" "$ARTIFACTS_DIR/tasks.json"
+    depends_on: [research]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 3: GENERATE TESTS — LOOP, ≤10 test tasks per iteration
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: generate-tests
+    loop:
+      fresh_context: true
+      prompt: |
+        # Test Generation Agent — Fresh Session
+
+        You are in a FRESH GLM-5.1 session. No memory of previous iterations.
+        Your job: write tests for ≤10 pending test tasks, commit, exit.
+
+        ## Phase 0: Load State (from disk)
+
+        1. Read `$ARTIFACTS_DIR/tasks.json`
+        2. Read `$ARTIFACTS_DIR/plan.md` for context
+        3. Read `CLAUDE.md` for conventions
+        4. Optionally read `$ARTIFACTS_DIR/progress.md` for learnings from prior iterations
+
+        ## Phase 1: Select Up To 10 Pending Test Tasks
+
+        From tasks.json, filter tasks where:
+        - `kind == "test"` AND
+        - `status == "pending"`
+
+        Take the FIRST 10 (in array order). If fewer than 10 remain, take all of them.
+        If ZERO remain -> immediately output exactly `<promise>TESTS_COMPLETE</promise>`.
+
+        Determine the batch number: max existing batch + 1.
+
+        ## Phase 2: Implement Each Test Task
+
+        For each selected task:
+        1. Read the target file if it already exists (to understand the module under test)
+        2. Read a nearby sibling test file to mirror the project's testing style
+        3. Use `write` tool to create the test file with actual test cases
+           - Use `bun:test` conventions (`describe`, `it`, `expect`)
+           - Cover edge cases, error paths, and happy path
+           - Do NOT import the production code if it doesn't exist yet — write stubs or
+             mark tests as `.todo` — the impl phase will fill in
+        4. After writing, run: `bun run type-check`
+        5. If types fail because impl doesn't exist yet, that's FINE — tests can fail
+           until impl runs. Just make sure YOUR test file has no syntax errors.
+
+        ## Phase 3: Commit
+
+        After all ≤10 test files are written:
+        ```bash
+        git add -A
+        git commit -m "test: add tests batch $BATCH_N (tasks T-XXX..T-YYY)"
+        ```
+
+        Capture the commit hash: `git rev-parse HEAD`
+
+        ## Phase 4: Update tasks.json
+
+        Use `edit` tool (or read + write) to update tasks.json:
+        - Set `status: "done"`, `batch: $BATCH_N`, `commit: "<short-hash>"` for the 10 tasks you processed
+        - Keep all other tasks unchanged
+
+        Append a line to `$ARTIFACTS_DIR/progress.md` (create if missing):
+        ```
+        ## Test batch $BATCH_N
+        Processed: T-001 ... T-010
+        Commit: abc123
+        ```
+
+        ## Phase 5: Completion Check
+
+        Re-read tasks.json. Count tasks where `kind == "test"` AND `status == "pending"`.
+
+        - If 0 remain -> output exactly `<promise>TESTS_COMPLETE</promise>` as the final line.
+        - If some remain -> do not emit the completion signal. End normally so the loop starts another iteration.
+
+        ## Rules
+
+        - Max 10 tasks this iteration — DO NOT exceed
+        - Every iteration is a fresh session — trust the disk, not any memory
+        - Never delete existing tests unless the plan explicitly says so
+        - If a test task depends on knowing the impl, write a `.todo` placeholder and
+          mark it pending-impl in a comment; count it as done anyway
+        - Never claim completion without emitting the exact completion tag
+      until: TESTS_COMPLETE
+      max_iterations: 10
+      until_bash: |
+        bun -e "const fs=require('fs'); const p=process.argv[1]; const data=JSON.parse(fs.readFileSync(p,'utf8')); const pending=data.tasks.filter(t=>t.kind==='test'&&t.status==='pending'); process.exit(pending.length===0?0:1)" "$ARTIFACTS_DIR/tasks.json"
+    depends_on: [plan]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 4: IMPLEMENT — LOOP, ≤10 impl tasks per iteration
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: implement
+    loop:
+      fresh_context: true
+      prompt: |
+        # Implementation Agent — Fresh Session
+
+        You are in a FRESH GLM-5.1 session. No memory of previous iterations.
+        Your job: implement ≤10 pending impl tasks, commit, exit.
+
+        ## Phase 0: Load State
+
+        1. Read `$ARTIFACTS_DIR/tasks.json`
+        2. Read `$ARTIFACTS_DIR/plan.md`
+        3. Read `CLAUDE.md`
+        4. Read `$ARTIFACTS_DIR/progress.md` for prior iteration learnings
+
+        ## Phase 1: Select Up To 10 Eligible Impl Tasks
+
+        Filter tasks where:
+        - `kind == "impl"` AND
+        - `status == "pending"` AND
+        - ALL ids in `dependsOn` have `status == "done"`
+
+        Take the FIRST 10. If fewer remain, take all. If ZERO -> immediately output exactly `<promise>IMPL_COMPLETE</promise>`.
+
+        Next batch number: max existing batch + 1.
+
+        ## Phase 2: Implement Each Task
+
+        For each selected task:
+        1. Read the test file(s) the task depends on — tests define the contract
+        2. Read nearby sibling production files — mirror the project's style
+        3. Use `write` / `edit` tools to produce the impl file(s)
+        4. After each file: `bun run type-check`
+           - If types fail → fix immediately, do NOT move to next task until clean
+        5. Run the specific test for this task: `bun test <path>`
+           - If fails → fix the impl (not the test) until it passes
+
+        Do NOT refactor unrelated code. Do NOT add features not in the plan.
+
+        ## Phase 3: Commit
+
+        ```bash
+        git add -A
+        git commit -m "feat: implement batch $BATCH_N (tasks I-XXX..I-YYY)"
+        ```
+
+        Capture hash with `git rev-parse HEAD`.
+
+        ## Phase 4: Update tasks.json + progress.md
+
+        Mark the 10 tasks done with batch + commit. Append to progress.md.
+
+        ## Phase 5: Completion Check
+
+        Count impl tasks where `kind == "impl"` AND `status == "pending"`.
+
+        - If 0 remain -> output exactly `<promise>IMPL_COMPLETE</promise>` as the final line.
+        - If some remain -> do not emit the completion signal. End normally so a fresh iteration follows.
+
+        ## Rules
+
+        - Max 10 tasks per iteration
+        - Fresh session — trust disk state
+        - If a task is blocked (dep not done), SKIP IT — do not mark done
+        - Never skip tests or delete them
+        - Never claim completion without emitting the exact completion tag
+      until: IMPL_COMPLETE
+      max_iterations: 10
+      until_bash: |
+        bun -e "const fs=require('fs'); const p=process.argv[1]; const data=JSON.parse(fs.readFileSync(p,'utf8')); const pending=data.tasks.filter(t=>t.kind==='impl'&&t.status==='pending'); process.exit(pending.length===0?0:1)" "$ARTIFACTS_DIR/tasks.json"
+    depends_on: [generate-tests]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 5: VALIDATE — BASH, full type-check + tests
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: validate
+    bash: |
+      set +e
+      mkdir -p "$ARTIFACTS_DIR"
+
+      echo "=== TYPE CHECK ==="
+      bun run type-check 2>&1 | tee "$ARTIFACTS_DIR/typecheck.log"
+      TC=$?
+
+      echo ""
+      echo "=== LINT ==="
+      bun run lint 2>&1 | tee "$ARTIFACTS_DIR/lint.log"
+      LT=$?
+
+      echo ""
+      echo "=== TESTS ==="
+      bun run test 2>&1 | tee "$ARTIFACTS_DIR/test.log"
+      TS=$?
+
+      echo ""
+      echo "=== RESULT ==="
+      echo "type-check: $([ $TC -eq 0 ] && echo PASS || echo FAIL)"
+      echo "lint: $([ $LT -eq 0 ] && echo PASS || echo FAIL)"
+      echo "tests: $([ $TS -eq 0 ] && echo PASS || echo FAIL)"
+
+      # Write structured validation.json for fix-tests agent without jq dependency
+      bun -e "const fs=require('fs'); const out=process.argv[1]; const tc=process.argv[2]; const lt=process.argv[3]; const ts=process.argv[4]; fs.writeFileSync(out, JSON.stringify({typeCheck: tc, lint: lt, tests: ts}, null, 2));" "$ARTIFACTS_DIR/validation.json" "$([ $TC -eq 0 ] && echo pass || echo fail)" "$([ $LT -eq 0 ] && echo pass || echo fail)" "$([ $TS -eq 0 ] && echo pass || echo fail)"
+
+      if [ $TC -eq 0 ] && [ $LT -eq 0 ] && [ $TS -eq 0 ]; then
+        echo "VALIDATION_STATUS: ALL_PASS"
+      else
+        echo "VALIDATION_STATUS: HAS_FAILURES"
+      fi
+      # Bash always exits 0 so DAG proceeds to fix-tests
+      exit 0
+    depends_on: [implement]
+    timeout: 600000
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 6: FIX-TESTS — LOOP, only runs if validate failed
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fix-tests
+    loop:
+      fresh_context: true
+      prompt: |
+        # Validation Fixer — Fresh Session
+
+        You fix failing tests / type errors / lint issues. Fresh session each iteration.
+        Max 10 fixes per iteration, commit, exit. Gate is `bun run validate`.
+
+        ## Phase 0: Load State
+
+        1. Read `$ARTIFACTS_DIR/validation.json` — summary of what's failing
+        2. Read `$ARTIFACTS_DIR/typecheck.log`, `test.log`, `lint.log` for details
+        3. Read `$ARTIFACTS_DIR/tasks.json` to know what was built
+        4. Read `CLAUDE.md` for conventions
+
+        If all three gates already say pass -> immediately output exactly `<promise>VALIDATION_PASSING</promise>` and stop.
+
+        ## Phase 1: Pick Up to 10 Issues
+
+        Priority order:
+        1. Type errors (blocking)
+        2. Failing tests (fix impl — never silence tests unless test is genuinely wrong per plan)
+        3. Lint errors (run `bun run lint:fix` for auto-fixable first)
+        4. Format (run `bun run format`)
+
+        Read the logs. Group issues by file. Pick at most 10 distinct files to touch.
+
+        ## Phase 2: Apply Fixes
+
+        - Type error → fix the type issue at the source
+        - Test failure → read test expectation, fix impl to match (unless plan changed)
+        - Lint → `bun run lint:fix` then fix remaining manually
+        - Format → `bun run format`
+
+        After each file, `bun run type-check` — DO NOT move on while broken.
+
+        ## Phase 3: Re-run Validation Locally
+
+        Re-run these commands and inspect their output directly:
+        - `bun run type-check`
+        - `bun run test`
+        - `bun run lint`
+
+        ## Phase 4: Commit
+
+        ```bash
+        git add -A
+        git commit -m "fix: address validation failures batch $N"
+        ```
+
+        Append to progress.md: which issues, which files, commit hash.
+
+        ## Phase 5: Completion
+
+        If all three (type-check, test, lint) pass now -> output exactly `<promise>VALIDATION_PASSING</promise>` as the final line.
+        Else -> do not emit the completion signal. End normally so a fresh iteration follows.
+
+        ## Rules
+
+        - Max 10 file fixes per iteration
+        - NEVER delete a test to make it pass
+        - NEVER weaken a type to silence an error
+        - If a test is genuinely wrong per plan.md, note it in progress.md and fix it
+        - Never claim completion without emitting the exact completion tag
+      until: VALIDATION_PASSING
+      max_iterations: 8
+      until_bash: |
+        bun run type-check >/dev/null 2>&1 && bun run lint >/dev/null 2>&1 && bun run test >/dev/null 2>&1
+    depends_on: [validate]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 7: REVIEW — Adversarial read-only review
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: review
+    prompt: |
+      You are an adversarial code reviewer. Find problems. Be ruthless.
+
+      ## Instructions
+
+      1. Run `git diff $BASE_BRANCH...HEAD --stat` for scope
+      2. Run `git diff $BASE_BRANCH...HEAD` for full diff
+      3. Review each changed file for:
+         - Bugs and logic errors
+         - Security vulnerabilities
+         - Type safety gaps (any, unsafe casts)
+         - Convention violations (check CLAUDE.md)
+         - Missing error handling
+         - Missing tests for new branches
+         - Performance red flags
+
+      ## Output
+
+      Use `write` tool to create `$ARTIFACTS_DIR/review.json` (EXACT schema):
+
+      ```json
+      {
+        "findings": [
+          {
+            "severity": "CRITICAL",
+            "file": "path/to/file.ts",
+            "line": 42,
+            "description": "..."
+          }
+        ],
+        "summary": {
+          "critical": 0,
+          "high": 0,
+          "low": 0,
+          "verdict": "PASS" // or "NEEDS_FIXES"
+        }
+      }
+      ```
+
+      Severity: CRITICAL (must fix) | HIGH (should fix) | LOW (nice to fix)
+
+      Find AT LEAST 3 findings. If you think there are none, look harder.
+    depends_on: [fix-tests]
+    context: fresh
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 8: FIX-REVIEW — LOOP, fix CRITICAL/HIGH only
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: fix-review
+    loop:
+      fresh_context: true
+      prompt: |
+        # Review Fixer — Fresh Session
+
+        You fix CRITICAL and HIGH review findings. Fresh session. Max 10 per iteration.
+
+        ## Phase 0: Load State
+
+        1. Read `$ARTIFACTS_DIR/review.json`
+        2. Read `CLAUDE.md`
+
+        If `summary.verdict == "PASS"` OR no findings with severity CRITICAL or HIGH,
+        immediately output exactly `<promise>REVIEW_CLEAN</promise>` and stop.
+
+        ## Phase 1: Pick Up to 10 CRITICAL/HIGH Findings
+
+        Take the first 10 findings where severity in {CRITICAL, HIGH}.
+        Ignore LOW.
+
+        ## Phase 2: Apply Fixes
+
+        For each finding:
+        1. Read the file at the indicated line
+        2. Fix ONLY the specific issue described
+        3. Do NOT refactor surrounding code
+        4. Run `bun run type-check` after each fix
+
+        ## Phase 3: Re-run Tests
+
+        Re-run `bun run test` and inspect the output directly.
+
+        If anything broke from your fix → fix it before proceeding.
+
+        ## Phase 4: Commit
+
+        ```bash
+        git add -A
+        git commit -m "fix: address review findings batch $N (CRITICAL/HIGH)"
+        ```
+
+        ## Phase 5: Update review.json
+
+        Mark the 10 findings you fixed — remove them from `findings` array OR
+        set their severity to "FIXED". Update `summary.critical` and `summary.high` counts.
+
+        ## Phase 6: Completion
+
+        If no CRITICAL/HIGH remain -> output exactly `<promise>REVIEW_CLEAN</promise>` as the final line.
+        Else -> do not emit the completion signal. End normally so a fresh iteration follows.
+
+        ## Rules
+
+        - Max 10 findings per iteration
+        - Ignore LOW completely
+        - If a finding is wrong (false positive), note in progress.md with reason
+        - Never claim completion without emitting the exact completion tag
+      until: REVIEW_CLEAN
+      max_iterations: 5
+      until_bash: |
+        bun -e "const fs=require('fs'); const p=process.argv[1]; const data=JSON.parse(fs.readFileSync(p,'utf8')); const remaining=(data.findings||[]).filter(f=>f.severity==='CRITICAL'||f.severity==='HIGH'); process.exit(remaining.length===0?0:1)" "$ARTIFACTS_DIR/review.json" && bun run test >/dev/null 2>&1
+    depends_on: [review]
+
+  # ═══════════════════════════════════════════════════════════════
+  # PHASE 9: SHIP — Push + create PR
+  # ═══════════════════════════════════════════════════════════════
+
+  - id: ship
+    prompt: |
+      Create a pull request.
+
+      ## Context
+      - Feature: $ARGUMENTS
+      - Progress: read `$ARTIFACTS_DIR/progress.md`
+      - Review summary: read `$ARTIFACTS_DIR/review.json` (`summary` field)
+
+      ## Instructions
+
+      1. `git push -u origin HEAD`
+      2. Check existing PR: `gh pr list --repo LuisErlacher/Archon --head $(git branch --show-current)`
+      3. If no PR exists, create one targeting `dev` on the fork with a concise title and body.
+      4. Do not use heredoc. Prefer a direct `gh pr create --title ... --body ...` invocation.
+      5. Save the PR URL to `$ARTIFACTS_DIR/.pr-url`
+    depends_on: [fix-review]
+    context: fresh
+    hooks:
+      PreToolUse:
+        - matcher: "write|edit"
+          response:
+            hookSpecificOutput:
+              hookEventName: PreToolUse
+              permissionDecision: deny
+              permissionDecisionReason: "Ship node — source files locked. Only git and gh."

@@ -110,11 +110,31 @@ Ask yourself:
 
 ---
 
+## CRITICAL: PATH RULES
+
+**You are running inside a working directory set by the workflow executor.**
+**NEVER use `cd` with an absolute path. NEVER hardcode project paths.**
+
+```
+RULE 1: All bash commands MUST use relative paths (no `cd /c/Users/...`)
+RULE 2: Use `pwd` to confirm your current directory — that IS your working directory
+RULE 3: All file operations (read, write, edit, grep, ls) use paths RELATIVE to pwd
+RULE 4: If a path from a previous step looks absolute, convert it to relative first
+```
+
+**Why:** The executor may place you in a git worktree (isolated copy of the repo).
+Using absolute paths to the main repo will edit the WRONG files.
+
+---
+
 ## Phase 3: GIT-CHECK - Ensure Correct State
 
 ### 3.1 Check Current Git State
 
 ```bash
+# Confirm working directory
+pwd
+
 # What branch are we on?
 git branch --show-current
 
@@ -132,28 +152,30 @@ git status
 
 ### 3.2 Decision Tree
 
-```
+```text
 ┌─ IN WORKTREE?
-│  └─ YES → Use it (assume it's for this work)
-│           Log: "Using worktree at {path}"
+│  └─ YES → Use current branch AS-IS. Do NOT switch branches. Do NOT create
+│           new branches. The isolation system has already set up the correct
+│           branch; any deviation operates on the wrong code.
+│           Log: "Using worktree at {path} on branch {branch}"
 │
-├─ ON MAIN/MASTER?
+├─ ON $BASE_BRANCH? (main, master, or configured base branch)
 │  └─ Q: Working directory clean?
 │     ├─ YES → Create branch: fix/issue-{number}-{slug}
 │     │        git checkout -b fix/issue-{number}-{slug}
-│     └─ NO  → Warn user:
-│              "Working directory has uncommitted changes.
-│               Please commit or stash before proceeding."
-│              STOP
+│     │        (only applies outside a worktree — e.g., manual CLI usage)
+│     └─ NO  → STOP: "Uncommitted changes on $BASE_BRANCH.
+│              Please commit or stash before proceeding."
 │
-├─ ON FEATURE/FIX BRANCH?
-│  └─ Use it (assume it's for this work)
+├─ ON OTHER BRANCH?
+│  └─ Use it AS-IS (assume it was set up for this work).
+│     Do NOT switch to another branch (e.g., one shown by `git branch` but
+│     not currently checked out).
 │     If branch name doesn't contain issue number:
 │       Warn: "Branch '{name}' may not be for issue #{number}"
 │
 └─ DIRTY STATE?
-   └─ Warn and suggest: git stash or git commit
-      STOP
+   └─ STOP: "Uncommitted changes. Please commit or stash first."
 ```
 
 ### 3.3 Ensure Up-to-Date
